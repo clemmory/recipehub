@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.expo/
+.expo-shared/
+*.log
+.env
+.env.local
+apps/**/.env
+!apps/**/.env.example
+.DS_Store
+Thumbs.db

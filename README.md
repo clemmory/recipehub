@@ -45,6 +45,22 @@ curl http://localhost:3000/health
 curl http://localhost:3000/health/db
 ```
 
+### Endpoints
+
+| Méthode | Route | Auth | Description |
+| --- | --- | --- | --- |
+| POST | `/auth/register` | — | Crée un compte, renvoie `{ token, user }` |
+| POST | `/auth/login` | — | Renvoie `{ token, user }` |
+| GET | `/auth/me` | JWT | Utilisateur courant |
+| GET | `/recipes` | JWT | Liste des recettes de l'utilisateur |
+| POST | `/recipes` | JWT | Crée une recette (`multipart/form-data` : `title`, `steps`/`ingredients`/`tags` en JSON stringifié, `photo` optionnelle) |
+| GET | `/recipes/:id` | JWT | Détail d'une recette |
+| PUT | `/recipes/:id` | JWT | Met à jour une recette (mêmes champs que POST, + `removePhoto=true` pour retirer la photo) |
+| DELETE | `/recipes/:id` | JWT | Supprime une recette |
+| GET | `/recipes/:id/photo` | JWT | Sert la photo (proxy MinIO) |
+
+Auth JWT : header `Authorization: Bearer <token>`.
+
 ## Mobile
 
 ```bash
@@ -67,4 +83,6 @@ apps/
 
 ## Phase actuelle
 
-Phase 0 — Socle : scaffolding, API qui répond, app qui démarre et vérifie sa connectivité à l'API. Pas encore d'auth, pas d'import Instagram (voir roadmap dans [CONCEPTION.md](./CONCEPTION.md)).
+Phase 1 — Gestion manuelle : auth (register/login par email + mot de passe, JWT), CRUD recette complet (titre, ingrédients, étapes, tags, photo stockée sur MinIO), écrans liste/détail/édition dans l'app. Pas encore d'import Instagram (voir roadmap dans [CONCEPTION.md](./CONCEPTION.md)).
+
+Pour tester la photo de recette, `docker compose up -d` doit tourner (MinIO inclus) — le bucket `recipes` est créé automatiquement au démarrage de l'API.

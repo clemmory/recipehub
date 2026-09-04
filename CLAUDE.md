@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Recipe Hub — a mobile app (iOS/Android) for capturing and structuring recipes (Instagram share import, photo capture, AI structuring via the Claude API). See [CONCEPTION.md](CONCEPTION.md) for full product context, architecture decisions, and the phase roadmap (Phase 0 socle → Phase 1 manual CRUD → Phase 2 Instagram import → Phase 3 photo import → Phase 4 social → Phase 5 intelligent).
+Recipe Hub — a mobile app (iOS/Android) for capturing and structuring recipes (Instagram share import, photo capture, AI structuring via the Claude API). Phase roadmap: Phase 0 socle → Phase 1 manual CRUD → Phase 2 Instagram import → Phase 3 photo import → Phase 4 social → Phase 5 intelligent.
 
 **Current state: Phase 0 (socle) complete.** Monorepo scaffolded, API responds, mobile app boots and confirms connectivity to the API. No auth, no recipe CRUD, no Instagram import yet — those start at Phase 1.
 

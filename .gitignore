@@ -9,3 +9,5 @@ apps/**/.env
 !apps/**/.env.example
 .DS_Store
 Thumbs.db
+NOTES.md
+CONCEPTION.md

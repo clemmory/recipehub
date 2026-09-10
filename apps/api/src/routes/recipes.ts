@@ -144,6 +144,15 @@ export async function recipeRoutes(app: FastifyInstance) {
     return recipes.map(serializeSummary);
   });
 
+  app.get('/tags', async (req) => {
+    const tags = await prisma.tag.findMany({
+      where: { userId: req.user.userId },
+      select: { name: true },
+      orderBy: { name: 'asc' },
+    });
+    return tags.map((t) => t.name);
+  });
+
   app.get<{ Params: { id: string } }>('/recipes/:id', async (req, reply) => {
     const recipe = await prisma.recipe.findFirst({
       where: { id: req.params.id, userId: req.user.userId },

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -18,7 +18,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../context/AuthContext';
-import { createRecipe, getRecipe, resolveUrl, updateRecipe, type RecipeIngredient } from '../lib/api';
+import { createRecipe, getRecipe, listTags, resolveUrl, updateRecipe, type RecipeIngredient } from '../lib/api';
 import { colors, radii, fonts } from '../lib/theme';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'RecipeEdit'>;
@@ -28,6 +28,18 @@ type PickedPhoto = { uri: string; name: string; type: string };
 
 function capitalizeFirst(text: string) {
   return text.length > 0 ? text[0].toUpperCase() + text.slice(1) : text;
+}
+
+function buildFormSnapshot(fields: {
+  title: string;
+  servings: string;
+  prepTimeMin: string;
+  cookTimeMin: string;
+  steps: string[];
+  ingredients: RecipeIngredient[];
+  tagsText: string;
+}) {
+  return JSON.stringify(fields);
 }
 
 export default function RecipeEditScreen() {
@@ -48,23 +60,85 @@ export default function RecipeEditScreen() {
   const [steps, setSteps] = useState<string[]>(['']);
   const [ingredients, setIngredients] = useState<RecipeIngredient[]>([{ name: '', quantity: '' }]);
   const [tagsText, setTagsText] = useState('');
+  const [existingTags, setExistingTags] = useState<string[]>([]);
 
   const [existingPhotoUrl, setExistingPhotoUrl] = useState<string | null>(null);
   const [newPhoto, setNewPhoto] = useState<PickedPhoto | null>(null);
   const [removePhoto, setRemovePhoto] = useState(false);
 
+  const initialSnapshotRef = useRef<string | null>(null);
+  const leavingAfterSaveRef = useRef(false);
+
+  useEffect(() => {
+    if (!token) return;
+    listTags(token)
+      .then(setExistingTags)
+      .catch(() => undefined);
+  }, [token]);
+
+  useEffect(() => {
+    if (isEditing) return;
+    initialSnapshotRef.current = buildFormSnapshot({
+      title: '',
+      servings: '',
+      prepTimeMin: '',
+      cookTimeMin: '',
+      steps: [''],
+      ingredients: [{ name: '', quantity: '' }],
+      tagsText: '',
+    });
+  }, [isEditing]);
+
+  const selectedTags = useMemo(
+    () => tagsText.split(',').map((t) => t.trim()).filter(Boolean),
+    [tagsText],
+  );
+
+  const tagOptions = useMemo(() => {
+    const newTags = selectedTags.filter(
+      (t) => !existingTags.some((e) => e.toLowerCase() === t.toLowerCase()),
+    );
+    return [...existingTags, ...newTags];
+  }, [existingTags, selectedTags]);
+
+  function toggleTag(tag: string) {
+    const isSelected = selectedTags.some((t) => t.toLowerCase() === tag.toLowerCase());
+    const next = isSelected
+      ? selectedTags.filter((t) => t.toLowerCase() !== tag.toLowerCase())
+      : [...selectedTags, tag];
+    setTagsText(next.join(', '));
+  }
+
   useEffect(() => {
     if (!isEditing || !token || !recipeId) return;
     getRecipe(token, recipeId)
       .then((recipe) => {
-        setTitle(recipe.title);
-        setServings(recipe.servings ? String(recipe.servings) : '');
-        setPrepTimeMin(recipe.prepTimeMin ? String(recipe.prepTimeMin) : '');
-        setCookTimeMin(recipe.cookTimeMin ? String(recipe.cookTimeMin) : '');
-        setSteps(recipe.steps.length > 0 ? recipe.steps : ['']);
-        setIngredients(recipe.ingredients.length > 0 ? recipe.ingredients : [{ name: '', quantity: '' }]);
-        setTagsText(recipe.tags.join(', '));
+        const nextTitle = recipe.title;
+        const nextServings = recipe.servings ? String(recipe.servings) : '';
+        const nextPrepTimeMin = recipe.prepTimeMin ? String(recipe.prepTimeMin) : '';
+        const nextCookTimeMin = recipe.cookTimeMin ? String(recipe.cookTimeMin) : '';
+        const nextSteps = recipe.steps.length > 0 ? recipe.steps : [''];
+        const nextIngredients = recipe.ingredients.length > 0 ? recipe.ingredients : [{ name: '', quantity: '' }];
+        const nextTagsText = recipe.tags.join(', ');
+
+        setTitle(nextTitle);
+        setServings(nextServings);
+        setPrepTimeMin(nextPrepTimeMin);
+        setCookTimeMin(nextCookTimeMin);
+        setSteps(nextSteps);
+        setIngredients(nextIngredients);
+        setTagsText(nextTagsText);
         setExistingPhotoUrl(recipe.photoUrl);
+
+        initialSnapshotRef.current = buildFormSnapshot({
+          title: nextTitle,
+          servings: nextServings,
+          prepTimeMin: nextPrepTimeMin,
+          cookTimeMin: nextCookTimeMin,
+          steps: nextSteps,
+          ingredients: nextIngredients,
+          tagsText: nextTagsText,
+        });
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Impossible de charger la recette'))
       .finally(() => setLoading(false));
@@ -186,6 +260,7 @@ export default function RecipeEditScreen() {
       } else {
         await createRecipe(token, input);
       }
+      leavingAfterSaveRef.current = true;
       navigation.goBack();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Impossible d'enregistrer la recette");
@@ -193,6 +268,37 @@ export default function RecipeEditScreen() {
       setSaving(false);
     }
   }
+
+  const isDirty =
+    newPhoto !== null ||
+    removePhoto ||
+    (initialSnapshotRef.current !== null &&
+      buildFormSnapshot({ title, servings, prepTimeMin, cookTimeMin, steps, ingredients, tagsText }) !==
+        initialSnapshotRef.current);
+
+  useEffect(() => {
+    // The iOS swipe-back gesture pops the native screen before this listener's
+    // Alert can resolve, desyncing native-stack's native/JS state ("was removed
+    // natively but doesn't get removed from JS state") — disable it while dirty
+    // so leaving only happens through the header back button, which does wait.
+    navigation.setOptions({ gestureEnabled: !isDirty });
+  }, [navigation, isDirty]);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      if (leavingAfterSaveRef.current || !isDirty) return;
+      e.preventDefault();
+      Alert.alert('Modifications non enregistrées', 'Voulez-vous enregistrer vos modifications avant de quitter ?', [
+        {
+          text: 'Ne pas enregistrer',
+          style: 'destructive',
+          onPress: () => navigation.dispatch(e.data.action),
+        },
+        { text: 'Enregistrer', onPress: handleSave },
+      ]);
+    });
+    return unsubscribe;
+  }, [navigation, isDirty, handleSave]);
 
   if (loading) {
     return (
@@ -288,6 +394,27 @@ export default function RecipeEditScreen() {
 
         <Text style={styles.label}>Tags (séparés par des virgules)</Text>
         <TextInput style={styles.input} value={tagsText} onChangeText={setTagsText} placeholder="dessert, facile" />
+        {tagOptions.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.tagPicker}
+            contentContainerStyle={styles.tagPickerContent}
+          >
+            {tagOptions.map((tag) => {
+              const isSelected = selectedTags.some((t) => t.toLowerCase() === tag.toLowerCase());
+              return (
+                <Pressable
+                  key={tag}
+                  onPress={() => toggleTag(tag)}
+                  style={[styles.tagOption, isSelected && styles.tagOptionSelected]}
+                >
+                  <Text style={[styles.tagOptionText, isSelected && styles.tagOptionTextSelected]}>{tag}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        )}
 
         <Text style={styles.sectionTitle}>Photo</Text>
         {newPhoto ? (
@@ -354,6 +481,19 @@ const styles = StyleSheet.create({
   removeText: { fontFamily: fonts.sansSemiBold, color: colors.danger, fontSize: 15 },
   linkButton: { marginTop: 10 },
   linkButtonText: { fontFamily: fonts.sansSemiBold, color: colors.greenDark },
+  tagPicker: { marginTop: 8 },
+  tagPickerContent: { gap: 6, paddingRight: 16 },
+  tagOption: {
+    backgroundColor: colors.white,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  tagOptionSelected: { backgroundColor: colors.terracotta, borderColor: colors.terracotta },
+  tagOptionText: { fontFamily: fonts.sansSemiBold, fontSize: 12, color: colors.greenDark },
+  tagOptionTextSelected: { color: colors.white },
   saveButton: { backgroundColor: colors.terracotta, borderRadius: radii.md, padding: 14, alignItems: 'center', marginTop: 24 },
   saveButtonText: { fontFamily: fonts.sansSemiBold, color: colors.white, fontSize: 16 },
   error: { fontFamily: fonts.sansMedium, color: colors.danger, marginTop: 12 },

@@ -94,6 +94,10 @@ export async function listRecipes(token: string) {
   return request<RecipeSummary[]>('/recipes', { token });
 }
 
+export async function listTags(token: string) {
+  return request<string[]>('/tags', { token });
+}
+
 export async function getRecipe(token: string, id: string) {
   return request<RecipeDetail>(`/recipes/${id}`, { token });
 }

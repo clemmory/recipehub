@@ -12,17 +12,28 @@ const numberField = z.preprocess(
 );
 
 const recipeFieldsSchema = z.object({
-  title: z.string().min(1, 'Title is required'),
+  title: z.string().min(1, 'Le titre est obligatoire'),
   prepTimeMin: numberField,
   cookTimeMin: numberField,
   servings: numberField,
 });
 
 const ingredientsSchema = z
-  .array(z.object({ name: z.string().min(1, 'Ingredient name is required'), quantity: z.string().nullish() }))
-  .default([]);
-const stepsSchema = z.array(z.string().min(1, 'Step cannot be empty')).min(1, 'At least one step is required');
-const tagsSchema = z.array(z.string().min(1, 'Tag cannot be empty')).default([]);
+  .array(z.object({ name: z.string().min(1, "Le nom de l'ingrédient est obligatoire"), quantity: z.string().nullish() }))
+  .min(1, 'Au moins un ingrédient est requis');
+const stepsSchema = z.array(z.string().min(1, "L'étape ne peut pas être vide")).min(1, 'Au moins une étape est requise');
+const tagsSchema = z.array(z.string().min(1, 'Le tag ne peut pas être vide')).default([]);
+
+// Case-insensitive matching only for ingredient & tag find-or-create, so
+// "Tomate" and "tomate" resolve to the same row. Deliberately NOT
+// plural-insensitive (dropped 2026-09-10, see NOTES.md) — "tomate" and
+// "tomates" are kept as distinct ingredients, since the singular/plural
+// often carries real meaning (quantity agreement), not just a spelling
+// slip. A future ingredient search is expected to match by prefix/contains
+// rather than exact equality, so having both forms isn't a problem there.
+function normalizeWord(word: string): string {
+  return word.trim().toLowerCase();
+}
 
 function isMultipartFile(value: unknown): value is MultipartFile {
   return typeof value === 'object' && value !== null && (value as { type?: string }).type === 'file';
@@ -32,13 +43,13 @@ function parseJsonField<S extends z.ZodTypeAny>(
   raw: unknown,
   schema: S,
 ): { ok: true; data: z.infer<S> } | { ok: false; error: string } {
-  if (typeof raw !== 'string') return { ok: false, error: 'missing field' };
+  if (typeof raw !== 'string') return { ok: false, error: 'champ manquant' };
   try {
     const parsed = schema.safeParse(JSON.parse(raw));
     if (!parsed.success) return { ok: false, error: firstZodMessage(parsed.error) };
     return { ok: true, data: parsed.data };
   } catch {
-    return { ok: false, error: 'invalid JSON' };
+    return { ok: false, error: 'JSON invalide' };
   }
 }
 
@@ -50,6 +61,7 @@ const recipeListSelect = {
   servings: true,
   photoKey: true,
   createdAt: true,
+  tags: { include: { tag: true } },
 } as const;
 
 const recipeDetailInclude = {
@@ -65,6 +77,7 @@ function serializeSummary(recipe: {
   servings: number | null;
   photoKey: string | null;
   createdAt: Date;
+  tags: { tag: { name: string } }[];
 }) {
   return {
     id: recipe.id,
@@ -72,7 +85,8 @@ function serializeSummary(recipe: {
     prepTimeMin: recipe.prepTimeMin,
     cookTimeMin: recipe.cookTimeMin,
     servings: recipe.servings,
-    photoUrl: recipe.photoKey ? `/recipes/${recipe.id}/photo` : null,
+    tags: recipe.tags.map((rt) => rt.tag.name),
+    photoUrl: recipe.photoKey ? `/recipes/${recipe.id}/photo?v=${encodeURIComponent(recipe.photoKey)}` : null,
     createdAt: recipe.createdAt,
   };
 }
@@ -97,7 +111,7 @@ function serializeDetail(recipe: {
     prepTimeMin: recipe.prepTimeMin,
     cookTimeMin: recipe.cookTimeMin,
     servings: recipe.servings,
-    photoUrl: recipe.photoKey ? `/recipes/${recipe.id}/photo` : null,
+    photoUrl: recipe.photoKey ? `/recipes/${recipe.id}/photo?v=${encodeURIComponent(recipe.photoKey)}` : null,
     ingredients: recipe.ingredients.map((ri) => ({ name: ri.ingredient.name, quantity: ri.quantity })),
     tags: recipe.tags.map((rt) => rt.tag.name),
     createdAt: recipe.createdAt,
@@ -135,13 +149,13 @@ export async function recipeRoutes(app: FastifyInstance) {
       where: { id: req.params.id, userId: req.user.userId },
       include: recipeDetailInclude,
     });
-    if (!recipe) return reply.code(404).send({ error: 'Recipe not found' });
+    if (!recipe) return reply.code(404).send({ error: 'Recette introuvable' });
     return serializeDetail(recipe);
   });
 
   app.get<{ Params: { id: string } }>('/recipes/:id/photo', async (req, reply) => {
     const recipe = await prisma.recipe.findFirst({ where: { id: req.params.id, userId: req.user.userId } });
-    if (!recipe || !recipe.photoKey) return reply.code(404).send({ error: 'Photo not found' });
+    if (!recipe || !recipe.photoKey) return reply.code(404).send({ error: 'Photo introuvable' });
 
     const stat = await minioClient.statObject(RECIPE_PHOTO_BUCKET, recipe.photoKey).catch(() => null);
     const stream = await minioClient.getObject(RECIPE_PHOTO_BUCKET, recipe.photoKey);
@@ -161,13 +175,13 @@ export async function recipeRoutes(app: FastifyInstance) {
     if (!fields.success) return reply.code(400).send({ error: firstZodMessage(fields.error) });
 
     const steps = parseJsonField((body.steps as { value?: string })?.value, stepsSchema);
-    if (!steps.ok) return reply.code(400).send({ error: `steps: ${steps.error}` });
+    if (!steps.ok) return reply.code(400).send({ error: `étapes : ${steps.error}` });
 
     const ingredients = parseJsonField((body.ingredients as { value?: string })?.value ?? '[]', ingredientsSchema);
-    if (!ingredients.ok) return reply.code(400).send({ error: `ingredients: ${ingredients.error}` });
+    if (!ingredients.ok) return reply.code(400).send({ error: `ingrédients : ${ingredients.error}` });
 
     const tags = parseJsonField((body.tags as { value?: string })?.value ?? '[]', tagsSchema);
-    if (!tags.ok) return reply.code(400).send({ error: `tags: ${tags.error}` });
+    if (!tags.ok) return reply.code(400).send({ error: `tags : ${tags.error}` });
 
     const photoFile = isMultipartFile(body.photo) ? body.photo : undefined;
 
@@ -185,9 +199,9 @@ export async function recipeRoutes(app: FastifyInstance) {
 
       for (const item of ingredients.data) {
         const ingredient = await tx.ingredient.upsert({
-          where: { name: item.name },
-          create: { name: item.name },
-          update: {},
+          where: { userId_normalized: { userId: req.user.userId, normalized: normalizeWord(item.name) } },
+          create: { name: item.name, normalized: normalizeWord(item.name), userId: req.user.userId },
+          update: { name: item.name },
         });
         await tx.recipeIngredient.create({
           data: { recipeId: created.id, ingredientId: ingredient.id, quantity: item.quantity },
@@ -195,7 +209,11 @@ export async function recipeRoutes(app: FastifyInstance) {
       }
 
       for (const name of tags.data) {
-        const tag = await tx.tag.upsert({ where: { name }, create: { name }, update: {} });
+        const tag = await tx.tag.upsert({
+          where: { userId_normalized: { userId: req.user.userId, normalized: normalizeWord(name) } },
+          create: { name, normalized: normalizeWord(name), userId: req.user.userId },
+          update: { name },
+        });
         await tx.recipeTag.create({ data: { recipeId: created.id, tagId: tag.id } });
       }
 
@@ -213,7 +231,7 @@ export async function recipeRoutes(app: FastifyInstance) {
 
   app.put<{ Params: { id: string } }>('/recipes/:id', async (req, reply) => {
     const existing = await prisma.recipe.findFirst({ where: { id: req.params.id, userId: req.user.userId } });
-    if (!existing) return reply.code(404).send({ error: 'Recipe not found' });
+    if (!existing) return reply.code(404).send({ error: 'Recette introuvable' });
 
     const body = req.body as Record<string, unknown>;
 
@@ -226,13 +244,13 @@ export async function recipeRoutes(app: FastifyInstance) {
     if (!fields.success) return reply.code(400).send({ error: firstZodMessage(fields.error) });
 
     const steps = parseJsonField((body.steps as { value?: string })?.value, stepsSchema);
-    if (!steps.ok) return reply.code(400).send({ error: `steps: ${steps.error}` });
+    if (!steps.ok) return reply.code(400).send({ error: `étapes : ${steps.error}` });
 
     const ingredients = parseJsonField((body.ingredients as { value?: string })?.value ?? '[]', ingredientsSchema);
-    if (!ingredients.ok) return reply.code(400).send({ error: `ingredients: ${ingredients.error}` });
+    if (!ingredients.ok) return reply.code(400).send({ error: `ingrédients : ${ingredients.error}` });
 
     const tags = parseJsonField((body.tags as { value?: string })?.value ?? '[]', tagsSchema);
-    if (!tags.ok) return reply.code(400).send({ error: `tags: ${tags.error}` });
+    if (!tags.ok) return reply.code(400).send({ error: `tags : ${tags.error}` });
 
     const photoFile = isMultipartFile(body.photo) ? body.photo : undefined;
     const removePhoto = (body.removePhoto as { value?: string })?.value === 'true';
@@ -254,9 +272,9 @@ export async function recipeRoutes(app: FastifyInstance) {
 
       for (const item of ingredients.data) {
         const ingredient = await tx.ingredient.upsert({
-          where: { name: item.name },
-          create: { name: item.name },
-          update: {},
+          where: { userId_normalized: { userId: req.user.userId, normalized: normalizeWord(item.name) } },
+          create: { name: item.name, normalized: normalizeWord(item.name), userId: req.user.userId },
+          update: { name: item.name },
         });
         await tx.recipeIngredient.create({
           data: { recipeId: existing.id, ingredientId: ingredient.id, quantity: item.quantity },
@@ -264,7 +282,11 @@ export async function recipeRoutes(app: FastifyInstance) {
       }
 
       for (const name of tags.data) {
-        const tag = await tx.tag.upsert({ where: { name }, create: { name }, update: {} });
+        const tag = await tx.tag.upsert({
+          where: { userId_normalized: { userId: req.user.userId, normalized: normalizeWord(name) } },
+          create: { name, normalized: normalizeWord(name), userId: req.user.userId },
+          update: { name },
+        });
         await tx.recipeTag.create({ data: { recipeId: existing.id, tagId: tag.id } });
       }
     });
@@ -284,7 +306,7 @@ export async function recipeRoutes(app: FastifyInstance) {
 
   app.delete<{ Params: { id: string } }>('/recipes/:id', async (req, reply) => {
     const existing = await prisma.recipe.findFirst({ where: { id: req.params.id, userId: req.user.userId } });
-    if (!existing) return reply.code(404).send({ error: 'Recipe not found' });
+    if (!existing) return reply.code(404).send({ error: 'Recette introuvable' });
 
     await prisma.recipe.delete({ where: { id: existing.id } });
     if (existing.photoKey) await deletePhoto(existing.photoKey);

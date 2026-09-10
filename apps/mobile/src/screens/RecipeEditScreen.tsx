@@ -9,6 +9,8 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -17,11 +19,16 @@ import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../context/AuthContext';
 import { createRecipe, getRecipe, resolveUrl, updateRecipe, type RecipeIngredient } from '../lib/api';
+import { colors, radii, fonts } from '../lib/theme';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'RecipeEdit'>;
 type Route = RouteProp<RootStackParamList, 'RecipeEdit'>;
 
 type PickedPhoto = { uri: string; name: string; type: string };
+
+function capitalizeFirst(text: string) {
+  return text.length > 0 ? text[0].toUpperCase() + text.slice(1) : text;
+}
 
 export default function RecipeEditScreen() {
   const navigation = useNavigation<Nav>();
@@ -59,14 +66,23 @@ export default function RecipeEditScreen() {
         setTagsText(recipe.tags.join(', '));
         setExistingPhotoUrl(recipe.photoUrl);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load recipe'))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Impossible de charger la recette'))
       .finally(() => setLoading(false));
   }, [isEditing, token, recipeId]);
 
-  async function handlePickPhoto() {
+  function applyPickedAsset(asset: ImagePicker.ImagePickerAsset) {
+    setNewPhoto({
+      uri: asset.uri,
+      name: asset.fileName ?? `photo-${Date.now()}.jpg`,
+      type: asset.mimeType ?? 'image/jpeg',
+    });
+    setRemovePhoto(false);
+  }
+
+  async function handlePickFromLibrary() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission needed', 'Allow photo library access to add a recipe photo.');
+      Alert.alert('Autorisation nécessaire', "Autorise l'accès à la photothèque pour ajouter une photo de recette.");
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -74,13 +90,29 @@ export default function RecipeEditScreen() {
       quality: 0.7,
     });
     if (result.canceled || result.assets.length === 0) return;
-    const asset = result.assets[0];
-    setNewPhoto({
-      uri: asset.uri,
-      name: asset.fileName ?? `photo-${Date.now()}.jpg`,
-      type: asset.mimeType ?? 'image/jpeg',
+    applyPickedAsset(result.assets[0]);
+  }
+
+  async function handleTakePhoto() {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Autorisation nécessaire', "Autorise l'accès à la caméra pour prendre une photo de recette.");
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      quality: 0.7,
     });
-    setRemovePhoto(false);
+    if (result.canceled || result.assets.length === 0) return;
+    applyPickedAsset(result.assets[0]);
+  }
+
+  function handleAddPhoto() {
+    Alert.alert('Ajouter une photo', undefined, [
+      { text: 'Prendre une photo', onPress: handleTakePhoto },
+      { text: 'Choisir dans la photothèque', onPress: handlePickFromLibrary },
+      { text: 'Annuler', style: 'cancel' },
+    ]);
   }
 
   function handleClearPhoto() {
@@ -112,22 +144,26 @@ export default function RecipeEditScreen() {
     if (!token) return;
     setError(null);
 
-    const trimmedTitle = title.trim();
-    const cleanSteps = steps.map((s) => s.trim()).filter(Boolean);
+    const trimmedTitle = capitalizeFirst(title.trim());
+    const cleanSteps = steps.map((s) => capitalizeFirst(s.trim())).filter(Boolean);
     const cleanIngredients = ingredients
-      .map((ing) => ({ name: ing.name.trim(), quantity: ing.quantity?.trim() || null }))
+      .map((ing) => ({ name: capitalizeFirst(ing.name.trim()), quantity: ing.quantity?.trim() || null }))
       .filter((ing) => ing.name.length > 0);
     const cleanTags = tagsText
       .split(',')
-      .map((t) => t.trim())
+      .map((t) => capitalizeFirst(t.trim()))
       .filter(Boolean);
 
     if (!trimmedTitle) {
-      setError('Title is required');
+      setError('Le titre est obligatoire');
+      return;
+    }
+    if (cleanIngredients.length === 0) {
+      setError('Au moins un ingrédient est requis');
       return;
     }
     if (cleanSteps.length === 0) {
-      setError('At least one step is required');
+      setError('Au moins une étape est requise');
       return;
     }
 
@@ -152,7 +188,7 @@ export default function RecipeEditScreen() {
       }
       navigation.goBack();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save recipe');
+      setError(err instanceof Error ? err.message : "Impossible d'enregistrer la recette");
     } finally {
       setSaving(false);
     }
@@ -169,137 +205,156 @@ export default function RecipeEditScreen() {
   const showExistingPhoto = existingPhotoUrl && !removePhoto && !newPhoto;
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      {newPhoto ? (
-        <Image source={{ uri: newPhoto.uri }} style={styles.photo} />
-      ) : showExistingPhoto ? (
-        <Image
-          source={{ uri: resolveUrl(existingPhotoUrl!), headers: { Authorization: `Bearer ${token}` } }}
-          style={styles.photo}
-        />
-      ) : null}
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <Text style={styles.label}>Titre</Text>
+        <TextInput style={styles.input} value={title} onChangeText={setTitle} placeholder="Titre de la recette" />
 
-      <View style={styles.photoActions}>
-        <Pressable style={styles.linkButton} onPress={handlePickPhoto}>
-          <Text style={styles.linkButtonText}>{newPhoto || showExistingPhoto ? 'Change photo' : 'Add photo'}</Text>
+        <View style={styles.row}>
+          <View style={styles.rowItem}>
+            <Text style={styles.label}>Portions</Text>
+            <TextInput
+              style={styles.input}
+              value={servings}
+              onChangeText={setServings}
+              keyboardType="number-pad"
+              placeholder="4"
+            />
+          </View>
+          <View style={styles.rowItem}>
+            <Text style={styles.label}>Préparation (min)</Text>
+            <TextInput
+              style={styles.input}
+              value={prepTimeMin}
+              onChangeText={setPrepTimeMin}
+              keyboardType="number-pad"
+              placeholder="15"
+            />
+          </View>
+          <View style={styles.rowItem}>
+            <Text style={styles.label}>Cuisson (min)</Text>
+            <TextInput
+              style={styles.input}
+              value={cookTimeMin}
+              onChangeText={setCookTimeMin}
+              keyboardType="number-pad"
+              placeholder="30"
+            />
+          </View>
+        </View>
+
+        <Text style={styles.sectionTitle}>Ingrédients</Text>
+        {ingredients.map((ing, i) => (
+          <View key={i} style={styles.listRow}>
+            <TextInput
+              style={[styles.input, styles.ingredientName]}
+              placeholder="Ingrédient"
+              value={ing.name}
+              onChangeText={(v) => updateIngredient(i, { name: v })}
+            />
+            <TextInput
+              style={[styles.input, styles.ingredientQty]}
+              placeholder="Qté"
+              value={ing.quantity ?? ''}
+              onChangeText={(v) => updateIngredient(i, { quantity: v })}
+            />
+            <Pressable onPress={() => removeIngredient(i)} style={styles.removeRowButton}>
+              <Text style={styles.removeText}>✕</Text>
+            </Pressable>
+          </View>
+        ))}
+        <Pressable style={styles.linkButton} onPress={addIngredient}>
+          <Text style={styles.linkButtonText}>+ Ajouter un ingrédient</Text>
         </Pressable>
-        {(newPhoto || showExistingPhoto) && (
-          <Pressable style={styles.linkButton} onPress={handleClearPhoto}>
-            <Text style={[styles.linkButtonText, styles.removeText]}>Remove photo</Text>
+
+        <Text style={styles.sectionTitle}>Étapes</Text>
+        {steps.map((step, i) => (
+          <View key={i} style={styles.listRow}>
+            <TextInput
+              style={[styles.input, styles.stepInput]}
+              placeholder={`Étape ${i + 1}`}
+              value={step}
+              onChangeText={(v) => updateStep(i, v)}
+              multiline
+            />
+            <Pressable onPress={() => removeStep(i)} style={styles.removeRowButton}>
+              <Text style={styles.removeText}>✕</Text>
+            </Pressable>
+          </View>
+        ))}
+        <Pressable style={styles.linkButton} onPress={addStep}>
+          <Text style={styles.linkButtonText}>+ Ajouter une étape</Text>
+        </Pressable>
+
+        <Text style={styles.label}>Tags (séparés par des virgules)</Text>
+        <TextInput style={styles.input} value={tagsText} onChangeText={setTagsText} placeholder="dessert, facile" />
+
+        <Text style={styles.sectionTitle}>Photo</Text>
+        {newPhoto ? (
+          <Image source={{ uri: newPhoto.uri }} style={styles.photo} />
+        ) : showExistingPhoto ? (
+          <Image
+            source={{ uri: resolveUrl(existingPhotoUrl!), headers: { Authorization: `Bearer ${token}` } }}
+            style={styles.photo}
+          />
+        ) : null}
+
+        <View style={styles.photoActions}>
+          <Pressable style={styles.linkButton} onPress={handleAddPhoto}>
+            <Text style={styles.linkButtonText}>
+              {newPhoto || showExistingPhoto ? 'Changer la photo' : 'Ajouter une photo'}
+            </Text>
           </Pressable>
-        )}
-      </View>
-
-      <Text style={styles.label}>Title</Text>
-      <TextInput style={styles.input} value={title} onChangeText={setTitle} placeholder="Recipe title" />
-
-      <View style={styles.row}>
-        <View style={styles.rowItem}>
-          <Text style={styles.label}>Servings</Text>
-          <TextInput
-            style={styles.input}
-            value={servings}
-            onChangeText={setServings}
-            keyboardType="number-pad"
-            placeholder="4"
-          />
+          {(newPhoto || showExistingPhoto) && (
+            <Pressable style={styles.linkButton} onPress={handleClearPhoto}>
+              <Text style={[styles.linkButtonText, styles.removeText]}>Retirer la photo</Text>
+            </Pressable>
+          )}
         </View>
-        <View style={styles.rowItem}>
-          <Text style={styles.label}>Prep (min)</Text>
-          <TextInput
-            style={styles.input}
-            value={prepTimeMin}
-            onChangeText={setPrepTimeMin}
-            keyboardType="number-pad"
-            placeholder="15"
-          />
-        </View>
-        <View style={styles.rowItem}>
-          <Text style={styles.label}>Cook (min)</Text>
-          <TextInput
-            style={styles.input}
-            value={cookTimeMin}
-            onChangeText={setCookTimeMin}
-            keyboardType="number-pad"
-            placeholder="30"
-          />
-        </View>
-      </View>
 
-      <Text style={styles.sectionTitle}>Ingredients</Text>
-      {ingredients.map((ing, i) => (
-        <View key={i} style={styles.listRow}>
-          <TextInput
-            style={[styles.input, styles.ingredientName]}
-            placeholder="Ingredient"
-            value={ing.name}
-            onChangeText={(v) => updateIngredient(i, { name: v })}
-          />
-          <TextInput
-            style={[styles.input, styles.ingredientQty]}
-            placeholder="Qty"
-            value={ing.quantity ?? ''}
-            onChangeText={(v) => updateIngredient(i, { quantity: v })}
-          />
-          <Pressable onPress={() => removeIngredient(i)} style={styles.removeRowButton}>
-            <Text style={styles.removeText}>✕</Text>
-          </Pressable>
-        </View>
-      ))}
-      <Pressable style={styles.linkButton} onPress={addIngredient}>
-        <Text style={styles.linkButtonText}>+ Add ingredient</Text>
-      </Pressable>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <Text style={styles.sectionTitle}>Steps</Text>
-      {steps.map((step, i) => (
-        <View key={i} style={styles.listRow}>
-          <TextInput
-            style={[styles.input, styles.stepInput]}
-            placeholder={`Step ${i + 1}`}
-            value={step}
-            onChangeText={(v) => updateStep(i, v)}
-            multiline
-          />
-          <Pressable onPress={() => removeStep(i)} style={styles.removeRowButton}>
-            <Text style={styles.removeText}>✕</Text>
-          </Pressable>
-        </View>
-      ))}
-      <Pressable style={styles.linkButton} onPress={addStep}>
-        <Text style={styles.linkButtonText}>+ Add step</Text>
-      </Pressable>
-
-      <Text style={styles.label}>Tags (comma-separated)</Text>
-      <TextInput style={styles.input} value={tagsText} onChangeText={setTagsText} placeholder="dessert, easy" />
-
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-
-      <Pressable style={styles.saveButton} onPress={handleSave} disabled={saving}>
-        {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Save recipe</Text>}
-      </Pressable>
-    </ScrollView>
+        <Pressable style={styles.saveButton} onPress={handleSave} disabled={saving}>
+          {saving ? (
+            <ActivityIndicator color={colors.white} />
+          ) : (
+            <Text style={styles.saveButtonText}>Enregistrer la recette</Text>
+          )}
+        </Pressable>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  container: { padding: 16, gap: 8, paddingBottom: 48 },
-  photo: { width: '100%', height: 200, borderRadius: 10, backgroundColor: '#eee' },
+  flex: { flex: 1 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.cream },
+  container: { padding: 16, gap: 8, paddingBottom: 48, backgroundColor: colors.cream, flexGrow: 1 },
+  photo: { width: '100%', height: 200, borderRadius: radii.lg, backgroundColor: colors.border },
   photoActions: { flexDirection: 'row', gap: 16, marginBottom: 8 },
-  label: { fontSize: 13, color: '#666', marginTop: 8 },
-  input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, fontSize: 15, backgroundColor: '#fff' },
+  label: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.gray, marginTop: 8 },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    padding: 10,
+    fontFamily: fonts.sansMedium,
+    fontSize: 15,
+    backgroundColor: colors.white,
+    color: colors.charcoal,
+  },
   row: { flexDirection: 'row', gap: 8 },
   rowItem: { flex: 1 },
-  sectionTitle: { fontSize: 18, fontWeight: '600', marginTop: 16 },
+  sectionTitle: { fontFamily: fonts.serifBold, fontSize: 18, color: colors.charcoal, marginTop: 16 },
   listRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 6 },
   ingredientName: { flex: 2 },
   ingredientQty: { flex: 1 },
   stepInput: { flex: 1 },
   removeRowButton: { padding: 8 },
-  removeText: { color: '#c0392b', fontSize: 15 },
+  removeText: { fontFamily: fonts.sansSemiBold, color: colors.danger, fontSize: 15 },
   linkButton: { marginTop: 10 },
-  linkButtonText: { color: '#2f6f3e', fontWeight: '600' },
-  saveButton: { backgroundColor: '#2f6f3e', borderRadius: 8, padding: 14, alignItems: 'center', marginTop: 24 },
-  saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  error: { color: '#c0392b', marginTop: 12 },
+  linkButtonText: { fontFamily: fonts.sansSemiBold, color: colors.greenDark },
+  saveButton: { backgroundColor: colors.terracotta, borderRadius: radii.md, padding: 14, alignItems: 'center', marginTop: 24 },
+  saveButtonText: { fontFamily: fonts.sansSemiBold, color: colors.white, fontSize: 16 },
+  error: { fontFamily: fonts.sansMedium, color: colors.danger, marginTop: 12 },
 });

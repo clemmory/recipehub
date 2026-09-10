@@ -4,16 +4,16 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { firstZodMessage } from '../lib/validation';
 
-const emailSchema = z.string().email('Please enter a valid email address');
+const emailSchema = z.string().email('Veuillez saisir une adresse email valide');
 
 const registerSchema = z.object({
   email: emailSchema,
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  password: z.string().min(8, 'Le mot de passe doit contenir au moins 8 caractères'),
 });
 
 const loginSchema = z.object({
   email: emailSchema,
-  password: z.string().min(1, 'Please enter your password'),
+  password: z.string().min(1, 'Veuillez saisir votre mot de passe'),
 });
 
 export async function authRoutes(app: FastifyInstance) {
@@ -26,7 +26,7 @@ export async function authRoutes(app: FastifyInstance) {
 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
-      return reply.code(409).send({ error: 'An account with this email already exists' });
+      return reply.code(409).send({ error: 'Un compte existe déjà avec cet email' });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -45,10 +45,10 @@ export async function authRoutes(app: FastifyInstance) {
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
-      return reply.code(401).send({ error: 'No account found with this email' });
+      return reply.code(401).send({ error: 'Aucun compte trouvé avec cet email' });
     }
     if (!(await bcrypt.compare(password, user.passwordHash))) {
-      return reply.code(401).send({ error: 'Incorrect password' });
+      return reply.code(401).send({ error: 'Mot de passe incorrect' });
     }
 
     const token = app.jwt.sign({ userId: user.id }, { expiresIn: '30d' });

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { colors, radii, fonts } from '../lib/theme';
+import Wordmark from '../components/Wordmark';
 
 export default function AuthScreen() {
   const { login, register } = useAuth();
@@ -20,7 +22,7 @@ export default function AuthScreen() {
         await register(email, password);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setError(err instanceof Error ? err.message : 'Une erreur est survenue');
     } finally {
       setSubmitting(false);
     }
@@ -31,8 +33,9 @@ export default function AuthScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <Text style={styles.title}>Recipe Hub</Text>
-      <Text style={styles.subtitle}>{mode === 'login' ? 'Log in' : 'Create an account'}</Text>
+      <View style={styles.wordmarkWrap}>
+        <Wordmark size={36} tagline="Toutes vos recettes en un seul endroit" />
+      </View>
 
       <TextInput
         style={styles.input}
@@ -45,7 +48,7 @@ export default function AuthScreen() {
       />
       <TextInput
         style={styles.input}
-        placeholder="Password"
+        placeholder="Mot de passe"
         secureTextEntry
         autoCapitalize="none"
         value={password}
@@ -56,15 +59,15 @@ export default function AuthScreen() {
 
       <Pressable style={styles.button} onPress={handleSubmit} disabled={submitting}>
         {submitting ? (
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color={colors.white} />
         ) : (
-          <Text style={styles.buttonText}>{mode === 'login' ? 'Log in' : 'Register'}</Text>
+          <Text style={styles.buttonText}>{mode === 'login' ? 'Se connecter' : "S'inscrire"}</Text>
         )}
       </Pressable>
 
       <Pressable onPress={() => setMode(mode === 'login' ? 'register' : 'login')}>
         <Text style={styles.switchText}>
-          {mode === 'login' ? "Don't have an account? Register" : 'Already have an account? Log in'}
+          {mode === 'login' ? 'Pas encore de compte ? Inscrivez-vous' : 'Déjà un compte ? Connectez-vous'}
         </Text>
       </Pressable>
     </KeyboardAvoidingView>
@@ -72,12 +75,20 @@ export default function AuthScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, alignItems: 'stretch', justifyContent: 'center', padding: 24, gap: 12 },
-  title: { fontSize: 28, fontWeight: '700', textAlign: 'center' },
-  subtitle: { fontSize: 16, textAlign: 'center', color: '#666', marginBottom: 12 },
-  input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, fontSize: 16 },
-  button: { backgroundColor: '#2f6f3e', borderRadius: 8, padding: 14, alignItems: 'center', marginTop: 8 },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  switchText: { color: '#2f6f3e', textAlign: 'center', marginTop: 12 },
-  error: { color: '#c0392b', textAlign: 'center' },
+  container: { flex: 1, alignItems: 'stretch', justifyContent: 'center', padding: 24, gap: 12, backgroundColor: colors.cream },
+  wordmarkWrap: { alignItems: 'center', marginBottom: 16 },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    padding: 12,
+    fontFamily: fonts.sansMedium,
+    fontSize: 16,
+    backgroundColor: colors.white,
+    color: colors.charcoal,
+  },
+  button: { backgroundColor: colors.terracotta, borderRadius: radii.md, padding: 14, alignItems: 'center', marginTop: 8 },
+  buttonText: { fontFamily: fonts.sansSemiBold, color: colors.white, fontSize: 16 },
+  switchText: { fontFamily: fonts.sansSemiBold, color: colors.greenDark, textAlign: 'center', marginTop: 12 },
+  error: { fontFamily: fonts.sansMedium, color: colors.danger, textAlign: 'center' },
 });

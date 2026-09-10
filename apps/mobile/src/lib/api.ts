@@ -9,6 +9,7 @@ export type RecipeSummary = {
   cookTimeMin: number | null;
   servings: number | null;
   photoUrl: string | null;
+  tags: string[];
   createdAt: string;
 };
 
@@ -17,7 +18,6 @@ export type RecipeIngredient = { name: string; quantity: string | null };
 export type RecipeDetail = RecipeSummary & {
   steps: string[];
   ingredients: RecipeIngredient[];
-  tags: string[];
   updatedAt: string;
 };
 

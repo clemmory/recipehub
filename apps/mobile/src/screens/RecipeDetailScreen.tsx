@@ -6,6 +6,7 @@ import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../context/AuthContext';
 import { deleteRecipe, getRecipe, resolveUrl, type RecipeDetail } from '../lib/api';
+import { colors, radii, fonts, NO_PHOTO_EMOJI } from '../lib/theme';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'RecipeDetail'>;
 type Route = RouteProp<RootStackParamList, 'RecipeDetail'>;
@@ -28,7 +29,7 @@ export default function RecipeDetailScreen() {
           if (!cancelled) setRecipe(data);
         })
         .catch((err) => {
-          if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load recipe');
+          if (!cancelled) setError(err instanceof Error ? err.message : 'Impossible de charger la recette');
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
@@ -41,10 +42,10 @@ export default function RecipeDetailScreen() {
 
   function handleDelete() {
     if (!token || !recipe) return;
-    Alert.alert('Delete recipe', `Delete "${recipe.title}"? This cannot be undone.`, [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert('Supprimer la recette', `Supprimer « ${recipe.title} » ? Cette action est irréversible.`, [
+      { text: 'Annuler', style: 'cancel' },
       {
-        text: 'Delete',
+        text: 'Supprimer',
         style: 'destructive',
         onPress: async () => {
           await deleteRecipe(token, recipe.id);
@@ -65,7 +66,7 @@ export default function RecipeDetailScreen() {
   if (error || !recipe) {
     return (
       <View style={styles.center}>
-        <Text style={styles.error}>{error ?? 'Recipe not found'}</Text>
+        <Text style={styles.error}>{error ?? 'Recette introuvable'}</Text>
       </View>
     );
   }
@@ -77,15 +78,19 @@ export default function RecipeDetailScreen() {
           source={{ uri: resolveUrl(recipe.photoUrl), headers: { Authorization: `Bearer ${token}` } }}
           style={styles.photo}
         />
-      ) : null}
+      ) : (
+        <View style={[styles.photo, styles.photoPlaceholder]}>
+          <Text style={styles.photoPlaceholderEmoji}>{NO_PHOTO_EMOJI}</Text>
+        </View>
+      )}
 
       <Text style={styles.title}>{recipe.title}</Text>
 
       <Text style={styles.meta}>
         {[
-          recipe.servings ? `${recipe.servings} servings` : null,
-          recipe.prepTimeMin ? `${recipe.prepTimeMin} min prep` : null,
-          recipe.cookTimeMin ? `${recipe.cookTimeMin} min cook` : null,
+          recipe.servings ? `${recipe.servings} portions` : null,
+          recipe.prepTimeMin ? `${recipe.prepTimeMin} min préparation` : null,
+          recipe.cookTimeMin ? `${recipe.cookTimeMin} min cuisson` : null,
         ]
           .filter(Boolean)
           .join(' · ')}
@@ -101,7 +106,7 @@ export default function RecipeDetailScreen() {
         </View>
       ) : null}
 
-      <Text style={styles.sectionTitle}>Ingredients</Text>
+      <Text style={styles.sectionTitle}>Ingrédients</Text>
       {recipe.ingredients.map((ing, i) => (
         <Text key={i} style={styles.listItem}>
           • {ing.quantity ? `${ing.quantity} ` : ''}
@@ -109,7 +114,7 @@ export default function RecipeDetailScreen() {
         </Text>
       ))}
 
-      <Text style={styles.sectionTitle}>Steps</Text>
+      <Text style={styles.sectionTitle}>Étapes</Text>
       {recipe.steps.map((step, i) => (
         <Text key={i} style={styles.listItem}>
           {i + 1}. {step}
@@ -121,10 +126,10 @@ export default function RecipeDetailScreen() {
           style={[styles.button, styles.editButton]}
           onPress={() => navigation.navigate('RecipeEdit', { recipeId: recipe.id })}
         >
-          <Text style={styles.editButtonText}>Edit</Text>
+          <Text style={styles.editButtonText}>Modifier</Text>
         </Pressable>
         <Pressable style={[styles.button, styles.deleteButton]} onPress={handleDelete}>
-          <Text style={styles.deleteButtonText}>Delete</Text>
+          <Text style={styles.deleteButtonText}>Supprimer</Text>
         </Pressable>
       </View>
     </ScrollView>
@@ -132,21 +137,23 @@ export default function RecipeDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  container: { padding: 16, gap: 8 },
-  photo: { width: '100%', height: 220, borderRadius: 10, backgroundColor: '#eee', marginBottom: 8 },
-  title: { fontSize: 24, fontWeight: '700' },
-  meta: { fontSize: 14, color: '#666' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: colors.cream },
+  container: { padding: 16, gap: 8, backgroundColor: colors.cream, flexGrow: 1 },
+  photo: { width: '100%', height: 220, borderRadius: radii.lg, backgroundColor: colors.border, marginBottom: 8 },
+  photoPlaceholder: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.cream },
+  photoPlaceholderEmoji: { fontSize: 48 },
+  title: { fontFamily: fonts.serifBold, fontSize: 26, color: colors.charcoal },
+  meta: { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.gray },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
-  tag: { backgroundColor: '#e8f3ea', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 },
-  tagText: { color: '#2f6f3e', fontSize: 12, fontWeight: '600' },
-  sectionTitle: { fontSize: 18, fontWeight: '600', marginTop: 16, marginBottom: 4 },
-  listItem: { fontSize: 15, lineHeight: 22 },
+  tag: { backgroundColor: colors.white, borderWidth: 1.5, borderColor: colors.green, borderRadius: radii.pill, paddingHorizontal: 10, paddingVertical: 4 },
+  tagText: { fontFamily: fonts.sansSemiBold, color: colors.greenDark, fontSize: 12 },
+  sectionTitle: { fontFamily: fonts.serifBold, fontSize: 18, color: colors.charcoal, marginTop: 16, marginBottom: 4 },
+  listItem: { fontFamily: fonts.sansMedium, fontSize: 15, lineHeight: 22, color: colors.charcoal },
   actions: { flexDirection: 'row', gap: 12, marginTop: 24 },
-  button: { flex: 1, borderRadius: 8, padding: 14, alignItems: 'center' },
-  editButton: { backgroundColor: '#2f6f3e' },
-  editButtonText: { color: '#fff', fontWeight: '600' },
-  deleteButton: { backgroundColor: '#fbeaea' },
-  deleteButtonText: { color: '#c0392b', fontWeight: '600' },
-  error: { color: '#c0392b' },
+  button: { flex: 1, borderRadius: radii.md, padding: 14, alignItems: 'center' },
+  editButton: { backgroundColor: colors.terracotta },
+  editButtonText: { fontFamily: fonts.sansSemiBold, color: colors.white },
+  deleteButton: { backgroundColor: colors.white, borderWidth: 1.5, borderColor: colors.danger },
+  deleteButtonText: { fontFamily: fonts.sansSemiBold, color: colors.danger },
+  error: { fontFamily: fonts.sansMedium, color: colors.danger },
 });

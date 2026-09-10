@@ -1,4 +1,5 @@
 import { View, ActivityIndicator } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { AuthProvider, useAuth } from '../context/AuthContext';
@@ -6,6 +7,7 @@ import AuthScreen from '../screens/AuthScreen';
 import RecipeListScreen from '../screens/RecipeListScreen';
 import RecipeDetailScreen from '../screens/RecipeDetailScreen';
 import RecipeEditScreen from '../screens/RecipeEditScreen';
+import { colors, fonts } from '../lib/theme';
 
 export type RootStackParamList = {
   Auth: undefined;
@@ -21,7 +23,7 @@ function Navigator() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.cream }}>
         <ActivityIndicator />
       </View>
     );
@@ -29,12 +31,31 @@ function Navigator() {
 
   return (
     <NavigationContainer>
-      <Stack.Navigator>
+      <Stack.Navigator
+        screenOptions={{
+          headerStyle: { backgroundColor: colors.cream },
+          headerShadowVisible: false,
+          headerTitleStyle: { color: colors.charcoal, fontFamily: fonts.serifBold, fontSize: 20 },
+          headerTintColor: colors.terracotta,
+          contentStyle: { backgroundColor: colors.cream },
+        }}
+      >
         {token ? (
           <>
-            <Stack.Screen name="RecipeList" component={RecipeListScreen} options={{ title: 'My Recipes' }} />
-            <Stack.Screen name="RecipeDetail" component={RecipeDetailScreen} options={{ title: 'Recipe' }} />
-            <Stack.Screen name="RecipeEdit" component={RecipeEditScreen} options={{ title: 'Edit Recipe' }} />
+            <Stack.Screen name="RecipeList" component={RecipeListScreen} options={{ headerShown: false }} />
+            <Stack.Screen
+              name="RecipeDetail"
+              component={RecipeDetailScreen}
+              options={{ title: '', headerBackButtonDisplayMode: 'minimal' }}
+            />
+            <Stack.Screen
+              name="RecipeEdit"
+              component={RecipeEditScreen}
+              options={({ route }) => ({
+                title: route.params?.recipeId ? 'Modifier la recette' : 'Nouvelle recette',
+                headerBackButtonDisplayMode: 'minimal',
+              })}
+            />
           </>
         ) : (
           <Stack.Screen name="Auth" component={AuthScreen} options={{ headerShown: false }} />
@@ -46,8 +67,10 @@ function Navigator() {
 
 export default function RootNavigator() {
   return (
-    <AuthProvider>
-      <Navigator />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <Navigator />
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }

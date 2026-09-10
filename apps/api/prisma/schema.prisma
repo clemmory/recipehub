@@ -20,6 +20,8 @@ model User {
   updatedAt    DateTime @updatedAt
 
   recipes      Recipe[]
+  ingredients  Ingredient[]
+  tags         Tag[]
 
   @@map("users")
 }
@@ -47,12 +49,17 @@ model Recipe {
 }
 
 model Ingredient {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  createdAt DateTime @default(now())
+  id         String   @id @default(uuid())
+  name       String
+  normalized String
+  createdAt  DateTime @default(now())
 
-  recipes   RecipeIngredient[]
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  recipes    RecipeIngredient[]
+
+  @@unique([userId, normalized])
   @@map("ingredients")
 }
 
@@ -69,12 +76,17 @@ model RecipeIngredient {
 }
 
 model Tag {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  createdAt DateTime @default(now())
+  id         String   @id @default(uuid())
+  name       String
+  normalized String
+  createdAt  DateTime @default(now())
 
-  recipes   RecipeTag[]
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  recipes    RecipeTag[]
+
+  @@unique([userId, normalized])
   @@map("tags")
 }
 

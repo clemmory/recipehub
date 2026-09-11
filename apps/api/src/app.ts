@@ -5,6 +5,7 @@ import authPlugin from './plugins/auth';
 import { healthRoutes } from './routes/health';
 import { authRoutes } from './routes/auth';
 import { recipeRoutes } from './routes/recipes';
+import { importRoutes } from './routes/imports';
 
 export function buildApp() {
   const app = Fastify({ logger: true });
@@ -17,5 +18,6 @@ export function buildApp() {
   app.register(healthRoutes);
   app.register(authRoutes);
   app.register(recipeRoutes);
+  app.register(importRoutes);
   return app;
 }

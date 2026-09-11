@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { View, Text, Image, ScrollView, Pressable, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, Image, ScrollView, Pressable, StyleSheet, ActivityIndicator, Alert, Linking } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -106,6 +106,18 @@ export default function RecipeDetailScreen() {
         </View>
       ) : null}
 
+      {recipe.source ? (
+        /^https?:\/\//i.test(recipe.source) ? (
+          <Pressable onPress={() => Linking.openURL(recipe.source!)}>
+            <Text style={styles.sourceLink} numberOfLines={1}>
+              {recipe.source}
+            </Text>
+          </Pressable>
+        ) : (
+          <Text style={styles.source}>{recipe.source}</Text>
+        )
+      ) : null}
+
       <Text style={styles.sectionTitle}>Ingrédients</Text>
       {recipe.ingredients.map((ing, i) => (
         <Text key={i} style={styles.listItem}>
@@ -147,6 +159,8 @@ const styles = StyleSheet.create({
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
   tag: { backgroundColor: colors.white, borderWidth: 1.5, borderColor: colors.green, borderRadius: radii.pill, paddingHorizontal: 10, paddingVertical: 4 },
   tagText: { fontFamily: fonts.sansSemiBold, color: colors.greenDark, fontSize: 12 },
+  source: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.gray, marginTop: 6 },
+  sourceLink: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.terracottaDark, marginTop: 6 },
   sectionTitle: { fontFamily: fonts.serifBold, fontSize: 18, color: colors.charcoal, marginTop: 16, marginBottom: 4 },
   listItem: { fontFamily: fonts.sansMedium, fontSize: 15, lineHeight: 22, color: colors.charcoal },
   actions: { flexDirection: 'row', gap: 12, marginTop: 24 },

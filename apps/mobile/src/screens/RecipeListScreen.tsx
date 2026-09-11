@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { View, Text, FlatList, Pressable, Image, TextInput, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, Pressable, Image, TextInput, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -155,8 +155,12 @@ export default function RecipeListScreen() {
   const showEmptyState = !loading && !error && recipes.length === 0;
   const insets = useSafeAreaInsets();
 
-  function goToAdd() {
-    navigation.navigate('RecipeEdit', {});
+  function handleAdd() {
+    Alert.alert('Ajouter une recette', undefined, [
+      { text: 'Nouvelle recette', onPress: () => navigation.navigate('RecipeEdit', {}) },
+      { text: 'Importer depuis Instagram', onPress: () => navigation.navigate('Import') },
+      { text: 'Annuler', style: 'cancel' },
+    ]);
   }
 
   return (
@@ -298,7 +302,7 @@ export default function RecipeListScreen() {
         )}
       </View>
 
-      <Pressable style={styles.addButton} onPress={goToAdd} hitSlop={8}>
+      <Pressable style={styles.addButton} onPress={handleAdd} hitSlop={8}>
         <Feather name="plus" size={26} color={colors.white} />
       </Pressable>
 

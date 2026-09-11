@@ -16,6 +16,7 @@ const recipeFieldsSchema = z.object({
   prepTimeMin: numberField,
   cookTimeMin: numberField,
   servings: numberField,
+  source: z.string().nullish(),
 });
 
 const ingredientsSchema = z
@@ -99,6 +100,7 @@ function serializeDetail(recipe: {
   cookTimeMin: number | null;
   servings: number | null;
   photoKey: string | null;
+  source: string | null;
   createdAt: Date;
   updatedAt: Date;
   ingredients: { quantity: string | null; ingredient: { name: string } }[];
@@ -111,6 +113,7 @@ function serializeDetail(recipe: {
     prepTimeMin: recipe.prepTimeMin,
     cookTimeMin: recipe.cookTimeMin,
     servings: recipe.servings,
+    source: recipe.source,
     photoUrl: recipe.photoKey ? `/recipes/${recipe.id}/photo?v=${encodeURIComponent(recipe.photoKey)}` : null,
     ingredients: recipe.ingredients.map((ri) => ({ name: ri.ingredient.name, quantity: ri.quantity })),
     tags: recipe.tags.map((rt) => rt.tag.name),
@@ -180,6 +183,7 @@ export async function recipeRoutes(app: FastifyInstance) {
       prepTimeMin: (body.prepTimeMin as { value?: string })?.value,
       cookTimeMin: (body.cookTimeMin as { value?: string })?.value,
       servings: (body.servings as { value?: string })?.value,
+      source: (body.source as { value?: string })?.value,
     });
     if (!fields.success) return reply.code(400).send({ error: firstZodMessage(fields.error) });
 
@@ -202,6 +206,7 @@ export async function recipeRoutes(app: FastifyInstance) {
           prepTimeMin: fields.data.prepTimeMin,
           cookTimeMin: fields.data.cookTimeMin,
           servings: fields.data.servings,
+          source: fields.data.source || null,
           userId: req.user.userId,
         },
       });
@@ -249,6 +254,7 @@ export async function recipeRoutes(app: FastifyInstance) {
       prepTimeMin: (body.prepTimeMin as { value?: string })?.value,
       cookTimeMin: (body.cookTimeMin as { value?: string })?.value,
       servings: (body.servings as { value?: string })?.value,
+      source: (body.source as { value?: string })?.value,
     });
     if (!fields.success) return reply.code(400).send({ error: firstZodMessage(fields.error) });
 
@@ -273,6 +279,7 @@ export async function recipeRoutes(app: FastifyInstance) {
           prepTimeMin: fields.data.prepTimeMin,
           cookTimeMin: fields.data.cookTimeMin,
           servings: fields.data.servings,
+          source: fields.data.source || null,
         },
       });
 

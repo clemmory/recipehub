@@ -18,6 +18,7 @@ export type RecipeIngredient = { name: string; quantity: string | null };
 export type RecipeDetail = RecipeSummary & {
   steps: string[];
   ingredients: RecipeIngredient[];
+  source: string | null;
   updatedAt: string;
 };
 
@@ -26,11 +27,22 @@ export type RecipeInput = {
   prepTimeMin?: number;
   cookTimeMin?: number;
   servings?: number;
+  source?: string;
   steps: string[];
   ingredients: RecipeIngredient[];
   tags: string[];
   photo?: { uri: string; name: string; type: string };
   removePhoto?: boolean;
+};
+
+export type StructuredRecipeDraft = {
+  title: string;
+  ingredients: RecipeIngredient[];
+  steps: string[];
+  prepTimeMin: number | null;
+  cookTimeMin: number | null;
+  servings: number | null;
+  tags: string[];
 };
 
 export function resolveUrl(path: string) {
@@ -108,6 +120,7 @@ function buildRecipeFormData(input: RecipeInput) {
   if (input.prepTimeMin !== undefined) form.append('prepTimeMin', String(input.prepTimeMin));
   if (input.cookTimeMin !== undefined) form.append('cookTimeMin', String(input.cookTimeMin));
   if (input.servings !== undefined) form.append('servings', String(input.servings));
+  if (input.source !== undefined) form.append('source', input.source);
   form.append('steps', JSON.stringify(input.steps));
   form.append('ingredients', JSON.stringify(input.ingredients));
   form.append('tags', JSON.stringify(input.tags));
@@ -137,4 +150,32 @@ export async function updateRecipe(token: string, id: string, input: RecipeInput
 
 export async function deleteRecipe(token: string, id: string) {
   return request<void>(`/recipes/${id}`, { method: 'DELETE', token });
+}
+
+export type ScrapedInstagramPost = {
+  scraped: boolean;
+  caption: string | null;
+  photoBase64: string | null;
+  photoMimeType: string | null;
+};
+
+export async function scrapeInstagramUrl(token: string, url: string) {
+  return request<ScrapedInstagramPost>('/imports/scrape', {
+    method: 'POST',
+    token,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  });
+}
+
+export async function structureRecipe(
+  token: string,
+  input: { caption?: string; photoBase64?: string; photoMimeType?: string },
+) {
+  return request<StructuredRecipeDraft>('/imports/structure', {
+    method: 'POST',
+    token,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
 }

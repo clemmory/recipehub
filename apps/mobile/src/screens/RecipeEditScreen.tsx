@@ -38,6 +38,7 @@ function buildFormSnapshot(fields: {
   steps: string[];
   ingredients: RecipeIngredient[];
   tagsText: string;
+  source: string;
 }) {
   return JSON.stringify(fields);
 }
@@ -61,6 +62,7 @@ export default function RecipeEditScreen() {
   const [ingredients, setIngredients] = useState<RecipeIngredient[]>([{ name: '', quantity: '' }]);
   const [tagsText, setTagsText] = useState('');
   const [existingTags, setExistingTags] = useState<string[]>([]);
+  const [source, setSource] = useState('');
 
   const [existingPhotoUrl, setExistingPhotoUrl] = useState<string | null>(null);
   const [newPhoto, setNewPhoto] = useState<PickedPhoto | null>(null);
@@ -78,16 +80,39 @@ export default function RecipeEditScreen() {
 
   useEffect(() => {
     if (isEditing) return;
+
+    const draft = route.params?.draft;
+    const nextTitle = draft?.title ?? '';
+    const nextServings = draft?.servings ? String(draft.servings) : '';
+    const nextPrepTimeMin = draft?.prepTimeMin ? String(draft.prepTimeMin) : '';
+    const nextCookTimeMin = draft?.cookTimeMin ? String(draft.cookTimeMin) : '';
+    const nextSteps = draft && draft.steps.length > 0 ? draft.steps : [''];
+    const nextIngredients = draft && draft.ingredients.length > 0 ? draft.ingredients : [{ name: '', quantity: '' }];
+    const nextTagsText = draft ? draft.tags.join(', ') : '';
+    const nextSource = route.params?.source ?? '';
+
+    if (draft) {
+      setTitle(nextTitle);
+      setServings(nextServings);
+      setPrepTimeMin(nextPrepTimeMin);
+      setCookTimeMin(nextCookTimeMin);
+      setSteps(nextSteps);
+      setIngredients(nextIngredients);
+      setTagsText(nextTagsText);
+    }
+    setSource(nextSource);
+
     initialSnapshotRef.current = buildFormSnapshot({
-      title: '',
-      servings: '',
-      prepTimeMin: '',
-      cookTimeMin: '',
-      steps: [''],
-      ingredients: [{ name: '', quantity: '' }],
-      tagsText: '',
+      title: nextTitle,
+      servings: nextServings,
+      prepTimeMin: nextPrepTimeMin,
+      cookTimeMin: nextCookTimeMin,
+      steps: nextSteps,
+      ingredients: nextIngredients,
+      tagsText: nextTagsText,
+      source: nextSource,
     });
-  }, [isEditing]);
+  }, [isEditing, route.params?.draft, route.params?.source]);
 
   const selectedTags = useMemo(
     () => tagsText.split(',').map((t) => t.trim()).filter(Boolean),
@@ -120,6 +145,7 @@ export default function RecipeEditScreen() {
         const nextSteps = recipe.steps.length > 0 ? recipe.steps : [''];
         const nextIngredients = recipe.ingredients.length > 0 ? recipe.ingredients : [{ name: '', quantity: '' }];
         const nextTagsText = recipe.tags.join(', ');
+        const nextSource = recipe.source ?? '';
 
         setTitle(nextTitle);
         setServings(nextServings);
@@ -128,6 +154,7 @@ export default function RecipeEditScreen() {
         setSteps(nextSteps);
         setIngredients(nextIngredients);
         setTagsText(nextTagsText);
+        setSource(nextSource);
         setExistingPhotoUrl(recipe.photoUrl);
 
         initialSnapshotRef.current = buildFormSnapshot({
@@ -138,6 +165,7 @@ export default function RecipeEditScreen() {
           steps: nextSteps,
           ingredients: nextIngredients,
           tagsText: nextTagsText,
+          source: nextSource,
         });
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Impossible de charger la recette'))
@@ -248,6 +276,7 @@ export default function RecipeEditScreen() {
         prepTimeMin: prepTimeMin ? Number(prepTimeMin) : undefined,
         cookTimeMin: cookTimeMin ? Number(cookTimeMin) : undefined,
         servings: servings ? Number(servings) : undefined,
+        source: source.trim() || undefined,
         steps: cleanSteps,
         ingredients: cleanIngredients,
         tags: cleanTags,
@@ -273,7 +302,7 @@ export default function RecipeEditScreen() {
     newPhoto !== null ||
     removePhoto ||
     (initialSnapshotRef.current !== null &&
-      buildFormSnapshot({ title, servings, prepTimeMin, cookTimeMin, steps, ingredients, tagsText }) !==
+      buildFormSnapshot({ title, servings, prepTimeMin, cookTimeMin, steps, ingredients, tagsText, source }) !==
         initialSnapshotRef.current);
 
   useEffect(() => {
@@ -415,6 +444,15 @@ export default function RecipeEditScreen() {
             })}
           </ScrollView>
         )}
+
+        <Text style={styles.label}>Source (optionnel)</Text>
+        <TextInput
+          style={styles.input}
+          value={source}
+          onChangeText={setSource}
+          placeholder="Lien Instagram, site, nom d'une personne..."
+          autoCapitalize="none"
+        />
 
         <Text style={styles.sectionTitle}>Photo</Text>
         {newPhoto ? (

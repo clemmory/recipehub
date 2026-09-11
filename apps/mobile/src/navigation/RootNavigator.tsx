@@ -7,13 +7,16 @@ import AuthScreen from '../screens/AuthScreen';
 import RecipeListScreen from '../screens/RecipeListScreen';
 import RecipeDetailScreen from '../screens/RecipeDetailScreen';
 import RecipeEditScreen from '../screens/RecipeEditScreen';
+import ImportScreen from '../screens/ImportScreen';
 import { colors, fonts } from '../lib/theme';
+import type { StructuredRecipeDraft } from '../lib/api';
 
 export type RootStackParamList = {
   Auth: undefined;
   RecipeList: undefined;
   RecipeDetail: { recipeId: string };
-  RecipeEdit: { recipeId?: string };
+  RecipeEdit: { recipeId?: string; draft?: StructuredRecipeDraft; source?: string };
+  Import: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -55,6 +58,11 @@ function Navigator() {
                 title: route.params?.recipeId ? 'Modifier la recette' : 'Nouvelle recette',
                 headerBackButtonDisplayMode: 'minimal',
               })}
+            />
+            <Stack.Screen
+              name="Import"
+              component={ImportScreen}
+              options={{ title: 'Importer depuis Instagram', headerBackButtonDisplayMode: 'minimal' }}
             />
           </>
         ) : (

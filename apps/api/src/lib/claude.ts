@@ -5,7 +5,7 @@ const MODEL = process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-5';
 
 export type StructuredRecipe = {
   title: string;
-  ingredients: { name: string; quantity: string | null }[];
+  ingredients: { name: string; quantity: string | null; section: string | null }[];
   steps: string[];
   prepTimeMin: number | null;
   cookTimeMin: number | null;
@@ -28,10 +28,15 @@ const RECORD_RECIPE_TOOL: Anthropic.Tool = {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['name', 'quantity'],
+          required: ['name', 'quantity', 'section'],
           properties: {
             name: { type: 'string' },
             quantity: { type: ['string', 'null'], description: 'e.g. "200g", "2", null if unknown' },
+            section: {
+              type: ['string', 'null'],
+              description:
+                'Which part of the recipe this ingredient belongs to, e.g. "Pour la pâte", "Pour la crème", "Pour la garniture" — only when the recipe genuinely has distinct parts. null if the recipe has no such parts. The SAME ingredient may legitimately appear more than once with a different section and quantity each time (e.g. butter in both the dough and the cream) — list it once per part rather than merging into a single quantity.',
+            },
           },
         },
       },
@@ -39,7 +44,12 @@ const RECORD_RECIPE_TOOL: Anthropic.Tool = {
       prepTimeMin: { type: ['integer', 'null'] },
       cookTimeMin: { type: ['integer', 'null'] },
       servings: { type: ['integer', 'null'] },
-      tags: { type: 'array', items: { type: 'string' }, description: 'e.g. "Dessert", "Facile", "Végétarien"' },
+      tags: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'e.g. "Dessert", "Facile", "Végétarien". Reuse one of the user\'s existing tags (given in the prompt) whenever it fits, instead of inventing a near-duplicate (e.g. "Rapide" already exists — don\'t also produce "Facile" or "Vite fait" for the same idea).',
+      },
     },
   },
 };
@@ -54,6 +64,7 @@ const SYSTEM_PROMPT =
 export async function structureRecipe(input: {
   caption?: string;
   photo?: { data: Buffer; mimeType: string };
+  existingTags?: string[];
 }): Promise<StructuredRecipe> {
   const content: Anthropic.ContentBlockParam[] = [];
 
@@ -67,6 +78,12 @@ export async function structureRecipe(input: {
     type: 'text',
     text: input.caption ? `Légende :\n${input.caption}` : 'Aucune légende fournie, base-toi uniquement sur la photo.',
   });
+  if (input.existingTags && input.existingTags.length > 0) {
+    content.push({
+      type: 'text',
+      text: `Tags déjà utilisés par l'utilisateur (réutilise-les en priorité si pertinents plutôt que d'en inventer des proches) :\n${input.existingTags.join(', ')}`,
+    });
+  }
 
   const response = await client.messages.create({
     model: MODEL,

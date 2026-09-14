@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { View, Text, Image, ScrollView, Pressable, StyleSheet, ActivityIndicator, Alert, Linking } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -39,6 +39,23 @@ export default function RecipeDetailScreen() {
       };
     }, [token, route.params.recipeId]),
   );
+
+  // Groups consecutive ingredients sharing the same section (e.g. "Pour la
+  // pâte") so the same ingredient can appear more than once in the list
+  // (different section, different quantity) without looking like a
+  // duplicate — see NOTES.md, 2026-09-11.
+  const ingredientGroups = useMemo(() => {
+    const groups: { section: string | null; items: RecipeDetail['ingredients'] }[] = [];
+    for (const ing of recipe?.ingredients ?? []) {
+      const last = groups[groups.length - 1];
+      if (last && last.section === ing.section) {
+        last.items.push(ing);
+      } else {
+        groups.push({ section: ing.section, items: [ing] });
+      }
+    }
+    return groups;
+  }, [recipe]);
 
   function handleDelete() {
     if (!token || !recipe) return;
@@ -119,11 +136,16 @@ export default function RecipeDetailScreen() {
       ) : null}
 
       <Text style={styles.sectionTitle}>Ingrédients</Text>
-      {recipe.ingredients.map((ing, i) => (
-        <Text key={i} style={styles.listItem}>
-          • {ing.quantity ? `${ing.quantity} ` : ''}
-          {ing.name}
-        </Text>
+      {ingredientGroups.map((group, gi) => (
+        <View key={gi}>
+          {group.section ? <Text style={styles.ingredientSection}>{group.section}</Text> : null}
+          {group.items.map((ing, i) => (
+            <Text key={i} style={styles.listItem}>
+              • {ing.quantity ? `${ing.quantity} ` : ''}
+              {ing.name}
+            </Text>
+          ))}
+        </View>
       ))}
 
       <Text style={styles.sectionTitle}>Étapes</Text>
@@ -162,6 +184,13 @@ const styles = StyleSheet.create({
   source: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.gray, marginTop: 6 },
   sourceLink: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.terracottaDark, marginTop: 6 },
   sectionTitle: { fontFamily: fonts.serifBold, fontSize: 18, color: colors.charcoal, marginTop: 16, marginBottom: 4 },
+  ingredientSection: {
+    fontFamily: fonts.sansSemiBold,
+    fontSize: 13,
+    color: colors.terracottaDark,
+    marginTop: 10,
+    marginBottom: 2,
+  },
   listItem: { fontFamily: fonts.sansMedium, fontSize: 15, lineHeight: 22, color: colors.charcoal },
   actions: { flexDirection: 'row', gap: 12, marginTop: 24 },
   button: { flex: 1, borderRadius: radii.md, padding: 14, alignItems: 'center' },

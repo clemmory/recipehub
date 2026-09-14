@@ -15,7 +15,12 @@ export type RootStackParamList = {
   Auth: undefined;
   RecipeList: undefined;
   RecipeDetail: { recipeId: string };
-  RecipeEdit: { recipeId?: string; draft?: StructuredRecipeDraft; source?: string };
+  RecipeEdit: {
+    recipeId?: string;
+    draft?: StructuredRecipeDraft;
+    source?: string;
+    photo?: { uri: string; name: string; type: string };
+  };
   Import: undefined;
 };
 

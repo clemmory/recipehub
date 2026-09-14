@@ -13,7 +13,7 @@ export type RecipeSummary = {
   createdAt: string;
 };
 
-export type RecipeIngredient = { name: string; quantity: string | null };
+export type RecipeIngredient = { name: string; quantity: string | null; section: string | null };
 
 export type RecipeDetail = RecipeSummary & {
   steps: string[];
@@ -60,17 +60,30 @@ class ApiError extends Error {
 
 async function request<T>(path: string, options: RequestInit & { token?: string } = {}): Promise<T> {
   const { token, headers, ...rest } = options;
-  const res = await fetch(resolveUrl(path), {
-    ...rest,
-    headers: {
-      ...(headers ?? {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
+  const url = resolveUrl(path);
+  const method = options.method ?? 'GET';
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...rest,
+      headers: {
+        ...(headers ?? {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+  } catch (err) {
+    // Almost always a connectivity issue (wrong EXPO_PUBLIC_API_URL, phone
+    // not on the same network as the API, firewall) rather than a bug —
+    // logged here because the calling screen only shows a generic message.
+    console.log(`[api] ${method} ${url} failed before a response: ${(err as Error).message}`);
+    throw err;
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
     const message = typeof body.error === 'string' ? body.error : JSON.stringify(body.error ?? body);
+    console.log(`[api] ${method} ${url} -> ${res.status}: ${message}`);
     throw new ApiError(res.status, message);
   }
 

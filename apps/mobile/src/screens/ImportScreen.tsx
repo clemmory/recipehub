@@ -13,6 +13,7 @@ import {
   Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { File, Paths } from 'expo-file-system';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -23,6 +24,17 @@ import { colors, radii, fonts } from '../lib/theme';
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Import'>;
 
 type Photo = { uri: string; base64: string; mimeType: string };
+
+// RecipeEditScreen's photo upload needs a real file:// uri (like the one
+// expo-image-picker gives) — the base64 data: uri used for display here
+// isn't usable as a multipart file part, so write it to a cache file first.
+function savePhotoToFile(photo: Photo): { uri: string; name: string; type: string } {
+  const extension = photo.mimeType.split('/')[1] ?? 'jpg';
+  const file = new File(Paths.cache, `import-${Date.now()}.${extension}`);
+  file.create();
+  file.write(photo.base64, { encoding: 'base64' });
+  return { uri: file.uri, name: file.name, type: photo.mimeType };
+}
 
 export default function ImportScreen() {
   const navigation = useNavigation<Nav>();
@@ -38,6 +50,19 @@ export default function ImportScreen() {
   const [structuring, setStructuring] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Shared by the automatic flow (right after a successful scrape) and the
+  // manual "Structurer avec l'IA" button (used when scraping failed and the
+  // user filled the caption/photo in by hand).
+  async function structureAndNavigate(captionValue: string | undefined, photoValue: Photo | null) {
+    const draft = await structureRecipe(token!, {
+      caption: captionValue,
+      photoBase64: photoValue?.base64,
+      photoMimeType: photoValue?.mimeType,
+    });
+    const savedPhoto = photoValue ? savePhotoToFile(photoValue) : undefined;
+    navigation.replace('RecipeEdit', { draft, source: url.trim() || undefined, photo: savedPhoto });
+  }
+
   async function handleFetch() {
     if (!token || !url.trim()) return;
     setError(null);
@@ -45,16 +70,28 @@ export default function ImportScreen() {
     setFetching(true);
     try {
       const result = await scrapeInstagramUrl(token, url.trim());
+      const photoValue: Photo | null =
+        result.photoBase64 && result.photoMimeType
+          ? {
+              uri: `data:${result.photoMimeType};base64,${result.photoBase64}`,
+              base64: result.photoBase64,
+              mimeType: result.photoMimeType,
+            }
+          : null;
       if (result.caption) setCaption(result.caption);
-      if (result.photoBase64 && result.photoMimeType) {
-        setPhoto({
-          uri: `data:${result.photoMimeType};base64,${result.photoBase64}`,
-          base64: result.photoBase64,
-          mimeType: result.photoMimeType,
-        });
-      }
-      if (!result.scraped) {
+      if (photoValue) setPhoto(photoValue);
+
+      if (!result.scraped || (!result.caption && !photoValue)) {
         setFetchNotice('Récupération automatique impossible — remplis la légende et/ou ajoute une photo ci-dessous.');
+        return;
+      }
+
+      // Scraping succeeded — go straight to the structured recipe, no need
+      // for the user to review the raw caption/photo or tap a second button.
+      try {
+        await structureAndNavigate(result.caption ?? undefined, photoValue);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Impossible de structurer la recette avec l'IA");
       }
     } catch (err) {
       setFetchNotice('Récupération automatique impossible — remplis la légende et/ou ajoute une photo ci-dessous.');
@@ -103,12 +140,7 @@ export default function ImportScreen() {
     setError(null);
     setStructuring(true);
     try {
-      const draft = await structureRecipe(token, {
-        caption: caption.trim() || undefined,
-        photoBase64: photo?.base64,
-        photoMimeType: photo?.mimeType,
-      });
-      navigation.replace('RecipeEdit', { draft, source: url.trim() || undefined });
+      await structureAndNavigate(caption.trim() || undefined, photo);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Impossible de structurer la recette avec l'IA");
     } finally {
@@ -133,7 +165,7 @@ export default function ImportScreen() {
             keyboardType="url"
           />
           <Pressable style={styles.fetchButton} onPress={handleFetch} disabled={fetching || !url.trim()}>
-            {fetching ? <ActivityIndicator color={colors.white} /> : <Text style={styles.fetchButtonText}>Récupérer</Text>}
+            {fetching ? <ActivityIndicator color={colors.white} /> : <Text style={styles.fetchButtonText}>Importer</Text>}
           </Pressable>
         </View>
         {fetchNotice ? <Text style={styles.notice}>{fetchNotice}</Text> : null}

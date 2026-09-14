@@ -23,7 +23,8 @@ export default fp(async function authPlugin(app: FastifyInstance) {
   app.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       await request.jwtVerify();
-    } catch {
+    } catch (err) {
+      request.log.warn({ err }, '[auth] JWT verification failed');
       reply.code(401).send({ error: 'Unauthorized' });
     }
   });

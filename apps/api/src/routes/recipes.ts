@@ -20,7 +20,19 @@ const recipeFieldsSchema = z.object({
 });
 
 const ingredientsSchema = z
-  .array(z.object({ name: z.string().min(1, "Le nom de l'ingrédient est obligatoire"), quantity: z.string().nullish() }))
+  .array(
+    z.object({
+      name: z.string().min(1, "Le nom de l'ingrédient est obligatoire"),
+      quantity: z.string().nullish(),
+      // Which part of the recipe this ingredient belongs to (e.g. "Pour la
+      // pâte", "Pour la crème") — lets the same ingredient appear more than
+      // once in a recipe with a different quantity per part. null/absent
+      // means the recipe has no distinct parts. Added 2026-09-11 after a
+      // real recipe (butter in both the dough and the cream) crashed the
+      // save — see NOTES.md.
+      section: z.string().nullish(),
+    }),
+  )
   .min(1, 'Au moins un ingrédient est requis');
 const stepsSchema = z.array(z.string().min(1, "L'étape ne peut pas être vide")).min(1, 'Au moins une étape est requise');
 const tagsSchema = z.array(z.string().min(1, 'Le tag ne peut pas être vide')).default([]);
@@ -47,9 +59,13 @@ function parseJsonField<S extends z.ZodTypeAny>(
   if (typeof raw !== 'string') return { ok: false, error: 'champ manquant' };
   try {
     const parsed = schema.safeParse(JSON.parse(raw));
-    if (!parsed.success) return { ok: false, error: firstZodMessage(parsed.error) };
+    if (!parsed.success) {
+      console.log(`[recipes] JSON field failed schema validation, raw value: ${raw}`);
+      return { ok: false, error: firstZodMessage(parsed.error) };
+    }
     return { ok: true, data: parsed.data };
-  } catch {
+  } catch (err) {
+    console.log(`[recipes] JSON.parse failed, raw value: ${raw}`, err);
     return { ok: false, error: 'JSON invalide' };
   }
 }
@@ -103,7 +119,7 @@ function serializeDetail(recipe: {
   source: string | null;
   createdAt: Date;
   updatedAt: Date;
-  ingredients: { quantity: string | null; ingredient: { name: string } }[];
+  ingredients: { quantity: string | null; section: string | null; ingredient: { name: string } }[];
   tags: { tag: { name: string } }[];
 }) {
   return {
@@ -115,7 +131,7 @@ function serializeDetail(recipe: {
     servings: recipe.servings,
     source: recipe.source,
     photoUrl: recipe.photoKey ? `/recipes/${recipe.id}/photo?v=${encodeURIComponent(recipe.photoKey)}` : null,
-    ingredients: recipe.ingredients.map((ri) => ({ name: ri.ingredient.name, quantity: ri.quantity })),
+    ingredients: recipe.ingredients.map((ri) => ({ name: ri.ingredient.name, quantity: ri.quantity, section: ri.section })),
     tags: recipe.tags.map((rt) => rt.tag.name),
     createdAt: recipe.createdAt,
     updatedAt: recipe.updatedAt,
@@ -125,6 +141,9 @@ function serializeDetail(recipe: {
 async function uploadPhoto(recipeId: string, file: MultipartFile) {
   const buffer = await file.toBuffer();
   const key = `${recipeId}/${randomUUID()}-${file.filename}`;
+  console.log(
+    `[recipes] uploading photo for recipe ${recipeId}: "${file.filename}" (${file.mimetype}, ${buffer.length} bytes) -> key "${key}"`,
+  );
   await minioClient.putObject(RECIPE_PHOTO_BUCKET, key, buffer, buffer.length, {
     'Content-Type': file.mimetype,
   });
@@ -169,7 +188,10 @@ export async function recipeRoutes(app: FastifyInstance) {
     const recipe = await prisma.recipe.findFirst({ where: { id: req.params.id, userId: req.user.userId } });
     if (!recipe || !recipe.photoKey) return reply.code(404).send({ error: 'Photo introuvable' });
 
-    const stat = await minioClient.statObject(RECIPE_PHOTO_BUCKET, recipe.photoKey).catch(() => null);
+    const stat = await minioClient.statObject(RECIPE_PHOTO_BUCKET, recipe.photoKey).catch((err) => {
+      console.log(`[recipes] statObject failed for key "${recipe.photoKey}":`, err);
+      return null;
+    });
     const stream = await minioClient.getObject(RECIPE_PHOTO_BUCKET, recipe.photoKey);
     reply.type(stat?.metaData?.['content-type'] ?? 'application/octet-stream');
     return reply.send(stream);
@@ -197,6 +219,9 @@ export async function recipeRoutes(app: FastifyInstance) {
     if (!tags.ok) return reply.code(400).send({ error: `tags : ${tags.error}` });
 
     const photoFile = isMultipartFile(body.photo) ? body.photo : undefined;
+    console.log(
+      `[recipes] POST /recipes: photo field present? ${Boolean(photoFile)}${photoFile ? ` ("${photoFile.filename}", ${photoFile.mimetype})` : ''}`,
+    );
 
     const recipe = await prisma.$transaction(async (tx) => {
       const created = await tx.recipe.create({
@@ -211,23 +236,44 @@ export async function recipeRoutes(app: FastifyInstance) {
         },
       });
 
+      const addedIngredientKeys = new Set<string>();
       for (const item of ingredients.data) {
         const ingredient = await tx.ingredient.upsert({
           where: { userId_normalized: { userId: req.user.userId, normalized: normalizeWord(item.name) } },
           create: { name: item.name, normalized: normalizeWord(item.name), userId: req.user.userId },
           update: { name: item.name },
         });
+        const section = item.section?.trim() || null;
+        // Two distinct input lines (e.g. "Tomates"/"tomates", or a genuine
+        // duplicate from AI-structured input) can normalize to the same
+        // Ingredient row — RecipeIngredient is unique per (recipe, ingredient,
+        // section), so keep only the first occurrence per section rather
+        // than crashing. A different section (e.g. same ingredient used for
+        // both the dough and the cream) is a legitimate second line, not a
+        // duplicate — see NOTES.md, 2026-09-11.
+        const key = `${ingredient.id}::${section ? normalizeWord(section) : ''}`;
+        if (addedIngredientKeys.has(key)) {
+          console.log(`[recipes] duplicate ingredient "${item.name}" (normalizes to "${ingredient.name}") in section "${section ?? ''}" — skipped`);
+          continue;
+        }
+        addedIngredientKeys.add(key);
         await tx.recipeIngredient.create({
-          data: { recipeId: created.id, ingredientId: ingredient.id, quantity: item.quantity },
+          data: { recipeId: created.id, ingredientId: ingredient.id, quantity: item.quantity, section },
         });
       }
 
+      const addedTagIds = new Set<string>();
       for (const name of tags.data) {
         const tag = await tx.tag.upsert({
           where: { userId_normalized: { userId: req.user.userId, normalized: normalizeWord(name) } },
           create: { name, normalized: normalizeWord(name), userId: req.user.userId },
           update: { name },
         });
+        if (addedTagIds.has(tag.id)) {
+          console.log(`[recipes] duplicate tag "${name}" (normalizes to "${tag.name}") — skipped`);
+          continue;
+        }
+        addedTagIds.add(tag.id);
         await tx.recipeTag.create({ data: { recipeId: created.id, tagId: tag.id } });
       }
 
@@ -269,6 +315,9 @@ export async function recipeRoutes(app: FastifyInstance) {
 
     const photoFile = isMultipartFile(body.photo) ? body.photo : undefined;
     const removePhoto = (body.removePhoto as { value?: string })?.value === 'true';
+    console.log(
+      `[recipes] PUT /recipes/${existing.id}: photo field present? ${Boolean(photoFile)}${photoFile ? ` ("${photoFile.filename}", ${photoFile.mimetype})` : ''}, removePhoto=${removePhoto}`,
+    );
 
     await prisma.$transaction(async (tx) => {
       await tx.recipe.update({
@@ -286,23 +335,37 @@ export async function recipeRoutes(app: FastifyInstance) {
       await tx.recipeIngredient.deleteMany({ where: { recipeId: existing.id } });
       await tx.recipeTag.deleteMany({ where: { recipeId: existing.id } });
 
+      const addedIngredientKeys = new Set<string>();
       for (const item of ingredients.data) {
         const ingredient = await tx.ingredient.upsert({
           where: { userId_normalized: { userId: req.user.userId, normalized: normalizeWord(item.name) } },
           create: { name: item.name, normalized: normalizeWord(item.name), userId: req.user.userId },
           update: { name: item.name },
         });
+        const section = item.section?.trim() || null;
+        const key = `${ingredient.id}::${section ? normalizeWord(section) : ''}`;
+        if (addedIngredientKeys.has(key)) {
+          console.log(`[recipes] duplicate ingredient "${item.name}" (normalizes to "${ingredient.name}") in section "${section ?? ''}" — skipped`);
+          continue;
+        }
+        addedIngredientKeys.add(key);
         await tx.recipeIngredient.create({
-          data: { recipeId: existing.id, ingredientId: ingredient.id, quantity: item.quantity },
+          data: { recipeId: existing.id, ingredientId: ingredient.id, quantity: item.quantity, section },
         });
       }
 
+      const addedTagIds = new Set<string>();
       for (const name of tags.data) {
         const tag = await tx.tag.upsert({
           where: { userId_normalized: { userId: req.user.userId, normalized: normalizeWord(name) } },
           create: { name, normalized: normalizeWord(name), userId: req.user.userId },
           update: { name },
         });
+        if (addedTagIds.has(tag.id)) {
+          console.log(`[recipes] duplicate tag "${name}" (normalizes to "${tag.name}") — skipped`);
+          continue;
+        }
+        addedTagIds.add(tag.id);
         await tx.recipeTag.create({ data: { recipeId: existing.id, tagId: tag.id } });
       }
     });

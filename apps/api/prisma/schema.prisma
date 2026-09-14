@@ -69,10 +69,16 @@ model RecipeIngredient {
   recipeId     String
   ingredientId String
   quantity     String?
+  section      String?
   recipe       Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
   ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
 
-  @@unique([recipeId, ingredientId])
+  // Same ingredient can now appear once per section of a recipe (e.g. "beurre"
+  // for the dough AND for the cream) — the app-level dedup in recipes.ts is
+  // the real guard against true duplicates (Postgres treats two NULL
+  // sections as distinct, so this constraint alone wouldn't catch a
+  // no-section duplicate). Added 2026-09-11, see NOTES.md.
+  @@unique([recipeId, ingredientId, section])
   @@map("recipe_ingredients")
 }
 

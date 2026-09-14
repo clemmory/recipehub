@@ -11,8 +11,12 @@ export const minioClient = new Client({
 export const RECIPE_PHOTO_BUCKET = process.env.MINIO_BUCKET ?? 'recipes';
 
 export async function ensureBucket() {
-  const exists = await minioClient.bucketExists(RECIPE_PHOTO_BUCKET).catch(() => false);
+  const exists = await minioClient.bucketExists(RECIPE_PHOTO_BUCKET).catch((err) => {
+    console.error(`[minio] bucketExists("${RECIPE_PHOTO_BUCKET}") check failed:`, err);
+    return false;
+  });
   if (!exists) {
+    console.log(`[minio] bucket "${RECIPE_PHOTO_BUCKET}" not found, creating it`);
     await minioClient.makeBucket(RECIPE_PHOTO_BUCKET);
   }
 }

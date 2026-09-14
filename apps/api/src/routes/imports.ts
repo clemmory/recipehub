@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { scrapeInstagramPost } from '../lib/instagramScraper';
 import { structureRecipe } from '../lib/claude';
 import { firstZodMessage } from '../lib/validation';
+import { prisma } from '../lib/prisma';
 
 const scrapeSchema = z.object({
   url: z.string().url('Lien invalide'),
@@ -48,10 +49,18 @@ export async function importRoutes(app: FastifyInstance) {
     const { caption, photoBase64, photoMimeType } = parsed.data;
 
     try {
+      const existingTags = await prisma.tag.findMany({
+        where: { userId: req.user.userId },
+        select: { name: true },
+        orderBy: { name: 'asc' },
+      });
+      req.log.info(`[imports] structuring with ${existingTags.length} existing tag(s) as context`);
       const draft = await structureRecipe({
         caption: caption ?? undefined,
         photo: photoBase64 ? { data: Buffer.from(photoBase64, 'base64'), mimeType: photoMimeType ?? 'image/jpeg' } : undefined,
+        existingTags: existingTags.map((t) => t.name),
       });
+      req.log.info(`[imports] structured tags: ${draft.tags.join(', ')}`);
       return draft;
     } catch (err) {
       req.log.error(err);

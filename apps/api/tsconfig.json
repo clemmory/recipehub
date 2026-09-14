@@ -3,6 +3,16 @@
     "target": "ES2022",
     "module": "commonjs",
     "moduleResolution": "node",
+    // "node" (aka "node10") moduleResolution is deprecated as of TS 5.5+
+    // and will be removed in TS 7.0. Not migrating to "node16"/"nodenext"
+    // here: this app is genuinely CommonJS end to end (dev via `tsx`,
+    // prod via `tsc` + `node dist/server.js`, no "type": "module"), and
+    // `puppeteer-core` ships ESM-only — under "node16" resolution that
+    // combination hard-fails to compile ("cannot be imported with
+    // require"). A real ESM migration is out of scope just to silence an
+    // editor warning; suppress it instead per TS's own suggested escape
+    // hatch until there's an actual reason to convert.
+    "ignoreDeprecations": "5.0",
     "lib": ["ES2022", "DOM"],
     "outDir": "dist",
     "rootDir": "src",

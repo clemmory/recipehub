@@ -30,7 +30,7 @@ export async function importRoutes(app: FastifyInstance) {
 
     const scraped = await scrapeInstagramPost(parsed.data.url);
     if (!scraped) {
-      return { scraped: false, caption: null, photoBase64: null, photoMimeType: null };
+      return { scraped: false, caption: null, photoBase64: null, photoMimeType: null, photoCandidates: [] };
     }
 
     return {
@@ -38,6 +38,14 @@ export async function importRoutes(app: FastifyInstance) {
       caption: scraped.caption,
       photoBase64: scraped.photo ? scraped.photo.data.toString('base64') : null,
       photoMimeType: scraped.photo?.mimeType ?? null,
+      // Video posts (Reels) with no single reliable cover come back with
+      // several frame candidates instead — the mobile client lets the user
+      // pick one rather than the API guessing.
+      photoCandidates: (scraped.photoCandidates ?? []).map((c) => ({
+        photoBase64: c.data.toString('base64'),
+        photoMimeType: c.mimeType,
+        label: c.label,
+      })),
     };
   });
 

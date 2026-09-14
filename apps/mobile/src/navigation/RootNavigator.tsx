@@ -9,7 +9,7 @@ import RecipeDetailScreen from '../screens/RecipeDetailScreen';
 import RecipeEditScreen from '../screens/RecipeEditScreen';
 import ImportScreen from '../screens/ImportScreen';
 import { colors, fonts } from '../lib/theme';
-import type { StructuredRecipeDraft } from '../lib/api';
+import type { StructuredRecipeDraft, ScrapedPhotoCandidate } from '../lib/api';
 
 export type RootStackParamList = {
   Auth: undefined;
@@ -20,6 +20,9 @@ export type RootStackParamList = {
     draft?: StructuredRecipeDraft;
     source?: string;
     photo?: { uri: string; name: string; type: string };
+    // Set when a Reel had no single reliable cover — the user picks one
+    // right here in the edit screen instead of ImportScreen guessing.
+    photoCandidates?: ScrapedPhotoCandidate[];
   };
   Import: undefined;
 };

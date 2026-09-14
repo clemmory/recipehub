@@ -6,6 +6,7 @@ import { healthRoutes } from './routes/health';
 import { authRoutes } from './routes/auth';
 import { recipeRoutes } from './routes/recipes';
 import { importRoutes } from './routes/imports';
+import { closeSharedBrowser } from './lib/instagramScraper';
 
 export function buildApp() {
   const app = Fastify({ logger: true });
@@ -19,5 +20,9 @@ export function buildApp() {
   app.register(authRoutes);
   app.register(recipeRoutes);
   app.register(importRoutes);
+  // Instagram scraping keeps a shared Chromium instance warm across imports
+  // (see instagramScraper.ts) — close it when the server shuts down so it
+  // doesn't outlive the process (dev restarts via `tsx watch` included).
+  app.addHook('onClose', closeSharedBrowser);
   return app;
 }

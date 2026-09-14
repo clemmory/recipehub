@@ -18,7 +18,16 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../context/AuthContext';
-import { createRecipe, getRecipe, listTags, resolveUrl, updateRecipe, type RecipeIngredient } from '../lib/api';
+import {
+  createRecipe,
+  getRecipe,
+  listTags,
+  resolveUrl,
+  updateRecipe,
+  type RecipeIngredient,
+  type ScrapedPhotoCandidate,
+} from '../lib/api';
+import { saveBase64PhotoToFile } from '../lib/photo';
 import { colors, radii, fonts } from '../lib/theme';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'RecipeEdit'>;
@@ -67,6 +76,13 @@ export default function RecipeEditScreen() {
   const [existingPhotoUrl, setExistingPhotoUrl] = useState<string | null>(null);
   const [newPhoto, setNewPhoto] = useState<PickedPhoto | null>(null);
   const [removePhoto, setRemovePhoto] = useState(false);
+  // Set when a Reel had no single reliable cover — the user picks one of
+  // these frame candidates instead of the app guessing (see
+  // instagramScraper.ts / ImportScreen). Kept around (not cleared once a
+  // choice is made) so "Changer la photo" can bring the tile picker back
+  // up instead of jumping straight to the camera/library picker.
+  const [photoCandidates, setPhotoCandidates] = useState<ScrapedPhotoCandidate[] | null>(null);
+  const [pickingPhoto, setPickingPhoto] = useState(false);
 
   const initialSnapshotRef = useRef<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
@@ -102,6 +118,10 @@ export default function RecipeEditScreen() {
     }
     setSource(nextSource);
     if (route.params?.photo) setNewPhoto(route.params.photo);
+    if (route.params?.photoCandidates && route.params.photoCandidates.length > 0) {
+      setPhotoCandidates(route.params.photoCandidates);
+      setPickingPhoto(true);
+    }
 
     initialSnapshotRef.current = buildFormSnapshot({
       title: nextTitle,
@@ -113,7 +133,7 @@ export default function RecipeEditScreen() {
       tagsText: nextTagsText,
       source: nextSource,
     });
-  }, [isEditing, route.params?.draft, route.params?.source, route.params?.photo]);
+  }, [isEditing, route.params?.draft, route.params?.source, route.params?.photo, route.params?.photoCandidates]);
 
   const selectedTags = useMemo(
     () => tagsText.split(',').map((t) => t.trim()).filter(Boolean),
@@ -180,6 +200,23 @@ export default function RecipeEditScreen() {
       type: asset.mimeType ?? 'image/jpeg',
     });
     setRemovePhoto(false);
+    setPickingPhoto(false);
+  }
+
+  function selectPhotoCandidate(candidate: ScrapedPhotoCandidate) {
+    setNewPhoto(saveBase64PhotoToFile(candidate.photoBase64, candidate.photoMimeType));
+    setRemovePhoto(false);
+    setPickingPhoto(false);
+  }
+
+  // With candidates available, "Changer la photo" re-opens the tile picker
+  // instead of jumping straight to the camera/library picker.
+  function handleChangePhoto() {
+    if (photoCandidates && photoCandidates.length > 0) {
+      setPickingPhoto(true);
+    } else {
+      handleAddPhoto();
+    }
   }
 
   async function handlePickFromLibrary() {
@@ -390,6 +427,8 @@ export default function RecipeEditScreen() {
   }
 
   const showExistingPhoto = existingPhotoUrl && !removePhoto && !newPhoto;
+  const hasPhotoCandidates = Boolean(photoCandidates && photoCandidates.length > 0);
+  const showPhotoPicker = hasPhotoCandidates && pickingPhoto;
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -533,27 +572,64 @@ export default function RecipeEditScreen() {
         />
 
         <Text style={styles.sectionTitle}>Photo</Text>
-        {newPhoto ? (
-          <Image source={{ uri: newPhoto.uri }} style={styles.photo} />
-        ) : showExistingPhoto ? (
-          <Image
-            source={{ uri: resolveUrl(existingPhotoUrl!), headers: { Authorization: `Bearer ${token}` } }}
-            style={styles.photo}
-          />
-        ) : null}
-
-        <View style={styles.photoActions}>
-          <Pressable style={styles.linkButton} onPress={handleAddPhoto}>
-            <Text style={styles.linkButtonText}>
-              {newPhoto || showExistingPhoto ? 'Changer la photo' : 'Ajouter une photo'}
+        {showPhotoPicker ? (
+          <>
+            <Text style={styles.notice}>
+              Cette vidéo n'a pas de couverture récupérable automatiquement — choisis une image ci-dessous.
             </Text>
-          </Pressable>
-          {(newPhoto || showExistingPhoto) && (
-            <Pressable style={styles.linkButton} onPress={handleClearPhoto}>
-              <Text style={[styles.linkButtonText, styles.removeText]}>Retirer la photo</Text>
-            </Pressable>
-          )}
-        </View>
+            <View style={styles.candidatesRow}>
+              {photoCandidates!.map((candidate) => (
+                <Pressable
+                  key={candidate.label}
+                  style={styles.candidateItem}
+                  onPress={() => selectPhotoCandidate(candidate)}
+                >
+                  <Image
+                    source={{ uri: `data:${candidate.photoMimeType};base64,${candidate.photoBase64}` }}
+                    style={styles.candidateThumb}
+                  />
+                </Pressable>
+              ))}
+              <Pressable style={styles.candidateItem} onPress={handleAddPhoto}>
+                <View style={[styles.candidateThumb, styles.candidateImportBox]}>
+                  <Text style={styles.candidateImportText}>Importer{'\n'}une photo</Text>
+                </View>
+              </Pressable>
+            </View>
+          </>
+        ) : (
+          <>
+            {newPhoto ? (
+              <Image source={{ uri: newPhoto.uri }} style={styles.photo} />
+            ) : showExistingPhoto ? (
+              <Image
+                source={{ uri: resolveUrl(existingPhotoUrl!), headers: { Authorization: `Bearer ${token}` } }}
+                style={styles.photo}
+              />
+            ) : null}
+
+            <View style={styles.photoActions}>
+              {hasPhotoCandidates ? (
+                <Pressable style={styles.linkButton} onPress={handleChangePhoto}>
+                  <Text style={styles.linkButtonText}>Changer la photo</Text>
+                </Pressable>
+              ) : (
+                <>
+                  <Pressable style={styles.linkButton} onPress={handleAddPhoto}>
+                    <Text style={styles.linkButtonText}>
+                      {newPhoto || showExistingPhoto ? 'Changer la photo' : 'Ajouter une photo'}
+                    </Text>
+                  </Pressable>
+                  {(newPhoto || showExistingPhoto) && (
+                    <Pressable style={styles.linkButton} onPress={handleClearPhoto}>
+                      <Text style={[styles.linkButtonText, styles.removeText]}>Retirer la photo</Text>
+                    </Pressable>
+                  )}
+                </>
+              )}
+            </View>
+          </>
+        )}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -575,6 +651,19 @@ const styles = StyleSheet.create({
   container: { padding: 16, gap: 8, paddingBottom: 48, backgroundColor: colors.cream, flexGrow: 1 },
   photo: { width: '100%', height: 200, borderRadius: radii.lg, backgroundColor: colors.border },
   photoActions: { flexDirection: 'row', gap: 16, marginBottom: 8 },
+  notice: { fontFamily: fonts.sansMedium, fontSize: 12, color: colors.gray, marginTop: 4 },
+  candidatesRow: { flexDirection: 'row', gap: 12, marginTop: 8, marginBottom: 8 },
+  candidateItem: { alignItems: 'center' },
+  candidateThumb: { width: 96, height: 128, borderRadius: radii.md, backgroundColor: colors.border },
+  candidateImportBox: {
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.gray,
+    backgroundColor: colors.cream,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  candidateImportText: { fontFamily: fonts.sansMedium, fontSize: 12, color: colors.gray, textAlign: 'center' },
   label: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.gray, marginTop: 8 },
   input: {
     borderWidth: 1,

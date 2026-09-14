@@ -165,11 +165,16 @@ export async function deleteRecipe(token: string, id: string) {
   return request<void>(`/recipes/${id}`, { method: 'DELETE', token });
 }
 
+export type ScrapedPhotoCandidate = { photoBase64: string; photoMimeType: string; label: string };
+
 export type ScrapedInstagramPost = {
   scraped: boolean;
   caption: string | null;
   photoBase64: string | null;
   photoMimeType: string | null;
+  // Reels with no single reliable cover come back with a few frame
+  // candidates instead of a single guessed photo — see ImportScreen.
+  photoCandidates: ScrapedPhotoCandidate[];
 };
 
 export async function scrapeInstagramUrl(token: string, url: string) {

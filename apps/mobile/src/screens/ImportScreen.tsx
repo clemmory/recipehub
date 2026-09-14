@@ -13,28 +13,17 @@ import {
   Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { File, Paths } from 'expo-file-system';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../context/AuthContext';
-import { scrapeInstagramUrl, structureRecipe } from '../lib/api';
+import { scrapeInstagramUrl, structureRecipe, type ScrapedPhotoCandidate } from '../lib/api';
+import { saveBase64PhotoToFile } from '../lib/photo';
 import { colors, radii, fonts } from '../lib/theme';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Import'>;
 
 type Photo = { uri: string; base64: string; mimeType: string };
-
-// RecipeEditScreen's photo upload needs a real file:// uri (like the one
-// expo-image-picker gives) — the base64 data: uri used for display here
-// isn't usable as a multipart file part, so write it to a cache file first.
-function savePhotoToFile(photo: Photo): { uri: string; name: string; type: string } {
-  const extension = photo.mimeType.split('/')[1] ?? 'jpg';
-  const file = new File(Paths.cache, `import-${Date.now()}.${extension}`);
-  file.create();
-  file.write(photo.base64, { encoding: 'base64' });
-  return { uri: file.uri, name: file.name, type: photo.mimeType };
-}
 
 export default function ImportScreen() {
   const navigation = useNavigation<Nav>();
@@ -52,15 +41,26 @@ export default function ImportScreen() {
 
   // Shared by the automatic flow (right after a successful scrape) and the
   // manual "Structurer avec l'IA" button (used when scraping failed and the
-  // user filled the caption/photo in by hand).
-  async function structureAndNavigate(captionValue: string | undefined, photoValue: Photo | null) {
+  // user filled the caption/photo in by hand). `candidates` carries a
+  // Reel's frame options through to RecipeEditScreen, which is where the
+  // user actually picks one (rather than pausing this screen on a guess).
+  async function structureAndNavigate(
+    captionValue: string | undefined,
+    photoValue: Photo | null,
+    candidates?: ScrapedPhotoCandidate[],
+  ) {
     const draft = await structureRecipe(token!, {
       caption: captionValue,
       photoBase64: photoValue?.base64,
       photoMimeType: photoValue?.mimeType,
     });
-    const savedPhoto = photoValue ? savePhotoToFile(photoValue) : undefined;
-    navigation.replace('RecipeEdit', { draft, source: url.trim() || undefined, photo: savedPhoto });
+    const savedPhoto = photoValue ? saveBase64PhotoToFile(photoValue.base64, photoValue.mimeType) : undefined;
+    navigation.replace('RecipeEdit', {
+      draft,
+      source: url.trim() || undefined,
+      photo: savedPhoto,
+      photoCandidates: candidates && candidates.length > 0 ? candidates : undefined,
+    });
   }
 
   async function handleFetch() {
@@ -81,7 +81,8 @@ export default function ImportScreen() {
       if (result.caption) setCaption(result.caption);
       if (photoValue) setPhoto(photoValue);
 
-      if (!result.scraped || (!result.caption && !photoValue)) {
+      const hasCandidates = result.photoCandidates.length > 0;
+      if (!result.scraped || (!result.caption && !photoValue && !hasCandidates)) {
         setFetchNotice('Récupération automatique impossible — remplis la légende et/ou ajoute une photo ci-dessous.');
         return;
       }
@@ -89,7 +90,7 @@ export default function ImportScreen() {
       // Scraping succeeded — go straight to the structured recipe, no need
       // for the user to review the raw caption/photo or tap a second button.
       try {
-        await structureAndNavigate(result.caption ?? undefined, photoValue);
+        await structureAndNavigate(result.caption ?? undefined, photoValue, result.photoCandidates);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Impossible de structurer la recette avec l'IA");
       }

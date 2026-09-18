@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
   container: { padding: 16, gap: 8, backgroundColor: colors.cream, flexGrow: 1 },
   photo: { width: '100%', height: 220, borderRadius: radii.lg, backgroundColor: colors.border, marginBottom: 8 },
   photoPlaceholder: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.cream },
-  photoPlaceholderEmoji: { fontSize: 48 },
+  photoPlaceholderEmoji: { fontSize: 72 },
   title: { fontFamily: fonts.serifBold, fontSize: 26, color: colors.charcoal },
   meta: { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.gray },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },

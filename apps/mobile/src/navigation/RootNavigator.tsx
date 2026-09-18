@@ -25,7 +25,9 @@ export type RootStackParamList = {
     // right here in the edit screen instead of ImportScreen guessing.
     photoCandidates?: ScrapedPhotoCandidate[];
   };
-  Import: undefined;
+  // Set when the user starts an import from an empty collection's "Ajouter
+  // une recette" menu — forces this collection onto the imported recipe.
+  Import: { presetTag?: string } | undefined;
   Profile: undefined;
 };
 

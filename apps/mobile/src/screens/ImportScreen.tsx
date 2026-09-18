@@ -13,8 +13,9 @@ import {
   Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../context/AuthContext';
 import { scrapeInstagramUrl, structureRecipe, type ScrapedPhotoCandidate } from '../lib/api';
@@ -22,12 +23,15 @@ import { saveBase64PhotoToFile } from '../lib/photo';
 import { colors, radii, fonts } from '../lib/theme';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Import'>;
+type Route = RouteProp<RootStackParamList, 'Import'>;
 
 type Photo = { uri: string; base64: string; mimeType: string };
 
 export default function ImportScreen() {
   const navigation = useNavigation<Nav>();
+  const route = useRoute<Route>();
   const { token } = useAuth();
+  const presetTag = route.params?.presetTag;
 
   const [url, setUrl] = useState('');
   const [fetching, setFetching] = useState(false);
@@ -54,6 +58,7 @@ export default function ImportScreen() {
       photoBase64: photoValue?.base64,
       photoMimeType: photoValue?.mimeType,
     });
+    if (presetTag && !draft.tags.includes(presetTag)) draft.tags = [...draft.tags, presetTag];
     const savedPhoto = photoValue ? saveBase64PhotoToFile(photoValue.base64, photoValue.mimeType) : undefined;
     navigation.replace('RecipeEdit', {
       draft,
@@ -203,7 +208,27 @@ export default function ImportScreen() {
           )}
         </Pressable>
 
-        <Pressable style={styles.linkButton} onPress={() => navigation.replace('RecipeEdit', {})}>
+        <Pressable
+          style={styles.linkButton}
+          onPress={() =>
+            navigation.replace(
+              'RecipeEdit',
+              presetTag
+                ? {
+                    draft: {
+                      title: '',
+                      ingredients: [],
+                      steps: [],
+                      prepTimeMin: null,
+                      cookTimeMin: null,
+                      servings: null,
+                      tags: [presetTag],
+                    },
+                  }
+                : {},
+            )
+          }
+        >
           <Text style={styles.linkButtonText}>Passer, saisie manuelle</Text>
         </Pressable>
       </ScrollView>

@@ -150,6 +150,10 @@ export default function RecipeListScreen() {
 
   const allCollections = useMemo(() => buildCollections(tags, recipes), [tags, recipes]);
 
+  // Independent of `search`, so typing in the search bar while inside a
+  // collection doesn't get mistaken for the collection itself being empty.
+  const activeCollectionIsEmpty = activeTag ? !recipes.some((r) => r.tags.includes(activeTag)) : false;
+
   const visibleCollections = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return allCollections;
@@ -395,7 +399,32 @@ export default function RecipeListScreen() {
         ) : view === 'recipes' ? (
           visibleRecipes.length === 0 ? (
             <View style={styles.center}>
-              <Text style={styles.emptySubtitle}>Aucune recette ne correspond.</Text>
+              {activeTag && activeCollectionIsEmpty ? (
+                <>
+                  <Text style={styles.emptySubtitle}>Cette collection est vide pour l'instant.</Text>
+                  <Pressable
+                    style={styles.addToCollectionButton}
+                    onPress={() =>
+                      navigation.navigate('RecipeEdit', {
+                        draft: {
+                          title: '',
+                          ingredients: [],
+                          steps: [],
+                          prepTimeMin: null,
+                          cookTimeMin: null,
+                          servings: null,
+                          tags: [activeTag],
+                        },
+                      })
+                    }
+                  >
+                    <Feather name="plus" size={16} color={colors.white} />
+                    <Text style={styles.addToCollectionButtonText}>Ajouter une recette</Text>
+                  </Pressable>
+                </>
+              ) : (
+                <Text style={styles.emptySubtitle}>Aucune recette ne correspond.</Text>
+              )}
             </View>
           ) : (
             <FlatList
@@ -611,6 +640,17 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   emptySubtitle: { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.gray, textAlign: 'center' },
+  addToCollectionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.terracotta,
+    borderRadius: radii.pill,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginTop: 14,
+  },
+  addToCollectionButtonText: { fontFamily: fonts.sansSemiBold, fontSize: 14, color: colors.white },
   addButtonWrap: {
     position: 'absolute',
     left: 0,

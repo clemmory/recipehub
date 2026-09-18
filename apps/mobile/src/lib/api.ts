@@ -119,8 +119,32 @@ export async function listRecipes(token: string) {
   return request<RecipeSummary[]>('/recipes', { token });
 }
 
+export type Tag = { id: string; name: string };
+
 export async function listTags(token: string) {
-  return request<string[]>('/tags', { token });
+  return request<Tag[]>('/tags', { token });
+}
+
+export async function createTag(token: string, name: string) {
+  return request<Tag>('/tags', {
+    method: 'POST',
+    token,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function updateTag(token: string, id: string, name: string) {
+  return request<Tag>(`/tags/${id}`, {
+    method: 'PUT',
+    token,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function deleteTag(token: string, id: string) {
+  return request<void>(`/tags/${id}`, { method: 'DELETE', token });
 }
 
 export async function getRecipe(token: string, id: string) {

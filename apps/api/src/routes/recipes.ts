@@ -35,7 +35,11 @@ const ingredientsSchema = z
   )
   .min(1, 'Au moins un ingrédient est requis');
 const stepsSchema = z.array(z.string().min(1, "L'étape ne peut pas être vide")).min(1, 'Au moins une étape est requise');
-const tagsSchema = z.array(z.string().min(1, 'Le tag ne peut pas être vide')).default([]);
+// Collections stay entirely user-driven (decided 2026-09-14, see NOTES.md):
+// at least one is now required per recipe, same enforcement point as
+// title/ingredients/steps rather than trusting the mobile client alone.
+const tagsSchema = z.array(z.string().min(1, 'Le tag ne peut pas être vide')).min(1, 'Choisis ou crée au moins une collection');
+const createTagSchema = z.object({ name: z.string().trim().min(1, 'Le nom de la collection est obligatoire') });
 
 // Case-insensitive matching only for ingredient & tag find-or-create, so
 // "Tomate" and "tomate" resolve to the same row. Deliberately NOT
@@ -167,12 +171,60 @@ export async function recipeRoutes(app: FastifyInstance) {
   });
 
   app.get('/tags', async (req) => {
-    const tags = await prisma.tag.findMany({
+    return prisma.tag.findMany({
       where: { userId: req.user.userId },
-      select: { name: true },
+      select: { id: true, name: true },
       orderBy: { name: 'asc' },
     });
-    return tags.map((t) => t.name);
+  });
+
+  // Lets the user create/manage a collection directly (name it like a photo
+  // album) rather than only ever creating one as a side effect of tagging a
+  // recipe — decided 2026-09-14, see NOTES.md.
+  app.post('/tags', async (req, reply) => {
+    const parsed = createTagSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: firstZodMessage(parsed.error) });
+
+    const tag = await prisma.tag.upsert({
+      where: { userId_normalized: { userId: req.user.userId, normalized: normalizeWord(parsed.data.name) } },
+      create: { name: parsed.data.name, normalized: normalizeWord(parsed.data.name), userId: req.user.userId },
+      update: { name: parsed.data.name },
+    });
+    return reply.code(201).send({ id: tag.id, name: tag.name });
+  });
+
+  // Renaming a collection, not just creating/deleting one — Clémentine,
+  // 2026-09-15, see NOTES.md.
+  app.put<{ Params: { id: string } }>('/tags/:id', async (req, reply) => {
+    const tag = await prisma.tag.findFirst({ where: { id: req.params.id, userId: req.user.userId } });
+    if (!tag) return reply.code(404).send({ error: 'Collection introuvable' });
+
+    const parsed = createTagSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: firstZodMessage(parsed.error) });
+
+    const normalized = normalizeWord(parsed.data.name);
+    const conflict = await prisma.tag.findFirst({
+      where: { userId: req.user.userId, normalized, NOT: { id: tag.id } },
+    });
+    if (conflict) return reply.code(409).send({ error: 'Une collection porte déjà ce nom' });
+
+    const updated = await prisma.tag.update({
+      where: { id: tag.id },
+      data: { name: parsed.data.name, normalized },
+    });
+    return { id: updated.id, name: updated.name };
+  });
+
+  app.delete<{ Params: { id: string } }>('/tags/:id', async (req, reply) => {
+    const tag = await prisma.tag.findFirst({ where: { id: req.params.id, userId: req.user.userId } });
+    if (!tag) return reply.code(404).send({ error: 'Collection introuvable' });
+
+    // RecipeTag rows cascade-delete with the Tag (schema.prisma) — removes
+    // the collection from every recipe that had it, but the recipes
+    // themselves are untouched, same as deleting a photo album doesn't
+    // delete the photos in it.
+    await prisma.tag.delete({ where: { id: tag.id } });
+    return reply.code(204).send();
   });
 
   app.get<{ Params: { id: string } }>('/recipes/:id', async (req, reply) => {

@@ -26,6 +26,7 @@ import {
   updateRecipe,
   type RecipeIngredient,
   type ScrapedPhotoCandidate,
+  type Tag,
 } from '../lib/api';
 import { saveBase64PhotoToFile } from '../lib/photo';
 import { colors, radii, fonts } from '../lib/theme';
@@ -70,7 +71,8 @@ export default function RecipeEditScreen() {
   const [steps, setSteps] = useState<string[]>(['']);
   const [ingredients, setIngredients] = useState<RecipeIngredient[]>([{ name: '', quantity: '', section: null }]);
   const [tagsText, setTagsText] = useState('');
-  const [existingTags, setExistingTags] = useState<string[]>([]);
+  const [existingTags, setExistingTags] = useState<Tag[]>([]);
+  const [existingTagsLoaded, setExistingTagsLoaded] = useState(false);
   const [source, setSource] = useState('');
 
   const [existingPhotoUrl, setExistingPhotoUrl] = useState<string | null>(null);
@@ -91,11 +93,20 @@ export default function RecipeEditScreen() {
     if (!token) return;
     listTags(token)
       .then(setExistingTags)
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => setExistingTagsLoaded(true));
   }, [token]);
 
   useEffect(() => {
-    if (isEditing) return;
+    // Waits for the user's existing tags before pre-filling — a draft's
+    // tags only get pre-selected here when they match an existing
+    // collection (reusing one isn't creating one); a genuinely new tag
+    // Claude proposes is dropped rather than auto-applied or even offered
+    // as a suggestion — collections are named by the user, not the AI
+    // (decided 2026-09-14, see NOTES.md). A brand-new account with zero
+    // tags still resolves this quickly since listTags() finishes either
+    // way.
+    if (isEditing || !existingTagsLoaded) return;
 
     const draft = route.params?.draft;
     const nextTitle = draft?.title ?? '';
@@ -104,7 +115,9 @@ export default function RecipeEditScreen() {
     const nextCookTimeMin = draft?.cookTimeMin ? String(draft.cookTimeMin) : '';
     const nextSteps = draft && draft.steps.length > 0 ? draft.steps : [''];
     const nextIngredients = draft && draft.ingredients.length > 0 ? draft.ingredients : [{ name: '', quantity: '', section: null }];
-    const nextTagsText = draft ? draft.tags.join(', ') : '';
+    const draftTags = draft?.tags ?? [];
+    const matchedTags = draftTags.filter((tag) => existingTags.some((e) => e.name.toLowerCase() === tag.toLowerCase()));
+    const nextTagsText = matchedTags.join(', ');
     const nextSource = route.params?.source ?? '';
 
     if (draft) {
@@ -133,7 +146,7 @@ export default function RecipeEditScreen() {
       tagsText: nextTagsText,
       source: nextSource,
     });
-  }, [isEditing, route.params?.draft, route.params?.source, route.params?.photo, route.params?.photoCandidates]);
+  }, [isEditing, existingTagsLoaded, existingTags, route.params?.draft, route.params?.source, route.params?.photo, route.params?.photoCandidates]);
 
   const selectedTags = useMemo(
     () => tagsText.split(',').map((t) => t.trim()).filter(Boolean),
@@ -141,10 +154,11 @@ export default function RecipeEditScreen() {
   );
 
   const tagOptions = useMemo(() => {
+    const existingNames = existingTags.map((t) => t.name);
     const newTags = selectedTags.filter(
-      (t) => !existingTags.some((e) => e.toLowerCase() === t.toLowerCase()),
+      (t) => !existingNames.some((e) => e.toLowerCase() === t.toLowerCase()),
     );
-    return [...existingTags, ...newTags];
+    return [...existingNames, ...newTags];
   }, [existingTags, selectedTags]);
 
   function toggleTag(tag: string) {
@@ -351,6 +365,10 @@ export default function RecipeEditScreen() {
       setError('Au moins une étape est requise');
       return;
     }
+    if (cleanTags.length === 0) {
+      setError('Choisis ou crée au moins une collection');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -429,6 +447,10 @@ export default function RecipeEditScreen() {
   const showExistingPhoto = existingPhotoUrl && !removePhoto && !newPhoto;
   const hasPhotoCandidates = Boolean(photoCandidates && photoCandidates.length > 0);
   const showPhotoPicker = hasPhotoCandidates && pickingPhoto;
+  // Just cleared a recipe's existing photo, with nothing picked yet — offer
+  // it back as a tile instead of silently discarding it (Clémentine,
+  // 2026-09-15, see NOTES.md).
+  const showRemovedPhotoChoice = Boolean(removePhoto && existingPhotoUrl && !newPhoto && !hasPhotoCandidates);
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -538,8 +560,13 @@ export default function RecipeEditScreen() {
           <Text style={styles.linkButtonText}>+ Ajouter une étape</Text>
         </Pressable>
 
-        <Text style={styles.label}>Tags (séparés par des virgules)</Text>
-        <TextInput style={styles.input} value={tagsText} onChangeText={setTagsText} placeholder="dessert, facile" />
+        <Text style={styles.label}>Collections (séparées par des virgules)</Text>
+        <TextInput
+          style={styles.input}
+          value={tagsText}
+          onChangeText={setTagsText}
+          placeholder="ex. Desserts du dimanche, Vite fait"
+        />
         {tagOptions.length > 0 && (
           <ScrollView
             horizontal
@@ -597,6 +624,20 @@ export default function RecipeEditScreen() {
               </Pressable>
             </View>
           </>
+        ) : showRemovedPhotoChoice ? (
+          <View style={styles.candidatesRow}>
+            <Pressable style={styles.candidateItem} onPress={() => setRemovePhoto(false)}>
+              <Image
+                source={{ uri: resolveUrl(existingPhotoUrl!), headers: { Authorization: `Bearer ${token}` } }}
+                style={styles.candidateThumb}
+              />
+            </Pressable>
+            <Pressable style={styles.candidateItem} onPress={handleAddPhoto}>
+              <View style={[styles.candidateThumb, styles.candidateImportBox]}>
+                <Text style={styles.candidateImportText}>Ajouter{'\n'}une photo</Text>
+              </View>
+            </Pressable>
+          </View>
         ) : (
           <>
             {newPhoto ? (
@@ -613,19 +654,14 @@ export default function RecipeEditScreen() {
                 <Pressable style={styles.linkButton} onPress={handleChangePhoto}>
                   <Text style={styles.linkButtonText}>Changer la photo</Text>
                 </Pressable>
+              ) : newPhoto || showExistingPhoto ? (
+                <Pressable style={styles.linkButton} onPress={handleClearPhoto}>
+                  <Text style={styles.linkButtonText}>Changer Photo</Text>
+                </Pressable>
               ) : (
-                <>
-                  <Pressable style={styles.linkButton} onPress={handleAddPhoto}>
-                    <Text style={styles.linkButtonText}>
-                      {newPhoto || showExistingPhoto ? 'Changer la photo' : 'Ajouter une photo'}
-                    </Text>
-                  </Pressable>
-                  {(newPhoto || showExistingPhoto) && (
-                    <Pressable style={styles.linkButton} onPress={handleClearPhoto}>
-                      <Text style={[styles.linkButtonText, styles.removeText]}>Retirer la photo</Text>
-                    </Pressable>
-                  )}
-                </>
+                <Pressable style={styles.linkButton} onPress={handleAddPhoto}>
+                  <Text style={styles.linkButtonText}>Ajouter une photo</Text>
+                </Pressable>
               )}
             </View>
           </>

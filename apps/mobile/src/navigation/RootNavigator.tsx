@@ -8,6 +8,7 @@ import RecipeListScreen from '../screens/RecipeListScreen';
 import RecipeDetailScreen from '../screens/RecipeDetailScreen';
 import RecipeEditScreen from '../screens/RecipeEditScreen';
 import ImportScreen from '../screens/ImportScreen';
+import ProfileScreen from '../screens/ProfileScreen';
 import { colors, fonts } from '../lib/theme';
 import type { StructuredRecipeDraft, ScrapedPhotoCandidate } from '../lib/api';
 
@@ -25,6 +26,7 @@ export type RootStackParamList = {
     photoCandidates?: ScrapedPhotoCandidate[];
   };
   Import: undefined;
+  Profile: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -71,6 +73,11 @@ function Navigator() {
               name="Import"
               component={ImportScreen}
               options={{ title: 'Importer depuis Instagram', headerBackButtonDisplayMode: 'minimal' }}
+            />
+            <Stack.Screen
+              name="Profile"
+              component={ProfileScreen}
+              options={{ title: 'Profil', headerBackButtonDisplayMode: 'minimal' }}
             />
           </>
         ) : (

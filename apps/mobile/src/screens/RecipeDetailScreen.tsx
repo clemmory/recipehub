@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { View, Text, Image, ScrollView, Pressable, StyleSheet, ActivityIndicator, Alert, Linking } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -125,10 +126,9 @@ export default function RecipeDetailScreen() {
 
       {recipe.source ? (
         /^https?:\/\//i.test(recipe.source) ? (
-          <Pressable onPress={() => Linking.openURL(recipe.source!)}>
-            <Text style={styles.sourceLink} numberOfLines={1}>
-              {recipe.source}
-            </Text>
+          <Pressable style={styles.sourceLinkRow} onPress={() => Linking.openURL(recipe.source!)}>
+            <Feather name="external-link" size={14} color={colors.terracottaDark} />
+            <Text style={styles.sourceLinkText}>Voir la recette originale</Text>
           </Pressable>
         ) : (
           <Text style={styles.source}>{recipe.source}</Text>
@@ -182,7 +182,20 @@ const styles = StyleSheet.create({
   tag: { backgroundColor: colors.white, borderWidth: 1.5, borderColor: colors.green, borderRadius: radii.pill, paddingHorizontal: 10, paddingVertical: 4 },
   tagText: { fontFamily: fonts.sansSemiBold, color: colors.greenDark, fontSize: 12 },
   source: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.gray, marginTop: 6 },
-  sourceLink: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.terracottaDark, marginTop: 6 },
+  sourceLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1.5,
+    borderColor: colors.terracotta,
+    borderRadius: radii.pill,
+    backgroundColor: colors.white,
+  },
+  sourceLinkText: { fontFamily: fonts.sansSemiBold, fontSize: 13, color: colors.terracottaDark },
   sectionTitle: { fontFamily: fonts.serifBold, fontSize: 18, color: colors.charcoal, marginTop: 16, marginBottom: 4 },
   ingredientSection: {
     fontFamily: fonts.sansSemiBold,

@@ -5,7 +5,12 @@ import {
   Fraunces_500Medium_Italic,
   Fraunces_700Bold,
 } from '@expo-google-fonts/fraunces';
-import { Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold } from '@expo-google-fonts/inter';
+import {
+  Urbanist_500Medium,
+  Urbanist_600SemiBold,
+  Urbanist_700Bold,
+  Urbanist_800ExtraBold,
+} from '@expo-google-fonts/urbanist';
 import * as SplashScreen from 'expo-splash-screen';
 import RootNavigator from './src/navigation/RootNavigator';
 
@@ -16,10 +21,10 @@ export default function App() {
     Fraunces_500Medium,
     Fraunces_500Medium_Italic,
     Fraunces_700Bold,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
-    Inter_800ExtraBold,
+    Urbanist_500Medium,
+    Urbanist_600SemiBold,
+    Urbanist_700Bold,
+    Urbanist_800ExtraBold,
   });
 
   useEffect(() => {

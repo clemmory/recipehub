@@ -1,13 +1,13 @@
 import { useCallback, useMemo, useState } from 'react';
 import { View, Text, FlatList, Pressable, Image, TextInput, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../context/AuthContext';
 import { createTag, deleteTag, listRecipes, listTags, resolveUrl, updateTag, type RecipeSummary, type Tag } from '../lib/api';
-import { colors, radii, fonts, NO_PHOTO_EMOJI } from '../lib/theme';
+import { colors, radii, fonts } from '../lib/theme';
 import Wordmark from '../components/Wordmark';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'RecipeList'>;
@@ -49,7 +49,7 @@ function MosaicTile({
           style={styles.mosaicImage}
         />
       ) : (
-        <Text style={styles.mosaicEmoji}>{NO_PHOTO_EMOJI}</Text>
+        <MaterialCommunityIcons name="food-variant" size={22} color={colors.cream} />
       )}
     </View>
   );
@@ -60,8 +60,8 @@ function CollectionMosaic({ recipes, token }: { recipes: RecipeSummary[]; token:
 
   if (items.length === 0) {
     return (
-      <View style={styles.mosaic}>
-        <Text style={styles.mosaicEmoji}>{NO_PHOTO_EMOJI}</Text>
+      <View style={[styles.mosaic, styles.mosaicTile]}>
+        <MaterialCommunityIcons name="food-variant" size={32} color={colors.cream} />
       </View>
     );
   }
@@ -145,7 +145,7 @@ export default function RecipeListScreen() {
     let list = recipes;
     if (q) list = list.filter((r) => r.title.toLowerCase().includes(q));
     if (activeTag) list = list.filter((r) => r.tags.includes(activeTag));
-    return list;
+    return [...list].sort((a, b) => a.title.localeCompare(b.title, 'fr'));
   }, [recipes, search, activeTag]);
 
   const allCollections = useMemo(() => buildCollections(tags, recipes), [tags, recipes]);
@@ -249,7 +249,7 @@ export default function RecipeListScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <View style={styles.header}>
-        <Wordmark align="left" tagline="Toutes vos recettes en un seul endroit" />
+        <Wordmark align="left" size={34} tagline="Toutes vos recettes en un seul endroit" />
       </View>
 
       {!showEmptyState && (
@@ -417,13 +417,28 @@ export default function RecipeListScreen() {
                         style={styles.cardPhotoImage}
                       />
                     ) : (
-                      <Text style={styles.cardPhotoEmoji}>{NO_PHOTO_EMOJI}</Text>
+                      <MaterialCommunityIcons name="food-variant" size={48} color={colors.cream} />
                     )}
                   </View>
                   <View style={styles.cardInfo}>
                     <Text style={styles.cardTitle} numberOfLines={2}>
                       {item.title}
                     </Text>
+                    {item.tags.length > 0 && (
+                      <View style={styles.tagChipRow}>
+                        {item.tags.map((tag) => (
+                          <View key={tag} style={styles.tagChip}>
+                            <Text style={styles.tagChipText}>{tag}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                    {item.prepTimeMin ? (
+                      <View style={styles.cardTimeRow}>
+                        <Feather name="clock" size={11} color={colors.gray} />
+                        <Text style={styles.cardTimeText}>{item.prepTimeMin} min</Text>
+                      </View>
+                    ) : null}
                   </View>
                 </Pressable>
               )}
@@ -458,13 +473,15 @@ export default function RecipeListScreen() {
         )}
       </View>
 
-      <Pressable style={styles.addButton} onPress={handleAdd} hitSlop={8}>
-        <Feather name="plus" size={26} color={colors.white} />
-      </Pressable>
+      <View style={styles.addButtonWrap} pointerEvents="box-none">
+        <Pressable style={styles.addButton} onPress={handleAdd} hitSlop={8}>
+          <Feather name="plus" size={26} color={colors.white} />
+        </Pressable>
+      </View>
 
       <View style={[styles.bottomNav, { paddingBottom: Math.max(insets.bottom, 10) }]}>
         <Pressable style={styles.navItem} onPress={() => selectView('collections')} hitSlop={8}>
-          <Feather name="grid" size={22} color={view === 'collections' ? colors.terracottaDark : colors.charcoal} />
+          <Feather name="book-open" size={22} color={view === 'collections' ? colors.terracottaDark : colors.charcoal} />
         </Pressable>
         <Pressable style={styles.navItem} onPress={() => navigation.navigate('Profile')} hitSlop={8}>
           <Feather name="user" size={22} color={colors.charcoal} />
@@ -502,15 +519,15 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, paddingVertical: 10, fontFamily: fonts.sansMedium, fontSize: 14, color: colors.charcoal },
   viewToggle: {
     flexDirection: 'row',
-    backgroundColor: colors.border,
-    borderRadius: radii.sm,
-    padding: 3,
+    gap: 20,
     marginHorizontal: 16,
     marginTop: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  toggleBtn: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: radii.sm - 2 },
-  toggleBtnActive: { backgroundColor: colors.white },
-  toggleText: { fontFamily: fonts.sansBold, fontSize: 12, color: colors.gray },
+  toggleBtn: { paddingVertical: 8, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  toggleBtnActive: { borderBottomColor: colors.terracotta },
+  toggleText: { fontFamily: fonts.sansBold, fontSize: 16, color: colors.gray },
   toggleTextActive: { color: colors.terracottaDark },
   activeTagRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, marginTop: 12 },
   activeTagChip: {
@@ -547,20 +564,40 @@ const styles = StyleSheet.create({
   newCollectionCancelButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   list: { padding: 16, gap: 14 },
   gridRow: { justifyContent: 'space-between' },
-  card: { width: '48%', backgroundColor: colors.white, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
-  cardPhoto: { height: 90, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' },
+  card: {
+    width: '48%',
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    shadowColor: colors.charcoal,
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  cardPhoto: {
+    height: 160,
+    backgroundColor: colors.ochre,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    overflow: 'hidden',
+  },
   cardPhotoImage: { width: '100%', height: '100%' },
-  cardPhotoEmoji: { fontSize: 30 },
   cardInfo: { padding: 10 },
-  cardTitle: { fontFamily: fonts.sansBold, fontSize: 13, color: colors.charcoal, marginBottom: 6 },
+  cardTitle: { fontFamily: fonts.serifBold, fontSize: 13, color: colors.charcoal, marginBottom: 6 },
+  tagChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 6 },
+  tagChip: { backgroundColor: colors.cream, borderRadius: radii.pill, paddingHorizontal: 7, paddingVertical: 3 },
+  tagChipText: { fontFamily: fonts.sansSemiBold, fontSize: 9, color: colors.greenDark },
+  cardTimeRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  cardTimeText: { fontFamily: fonts.sansMedium, fontSize: 11, color: colors.gray },
   boardCard: { width: '48%', gap: 8 },
-  mosaic: { height: 100, borderRadius: radii.md, overflow: 'hidden' },
+  mosaic: { height: 160, borderRadius: radii.md, overflow: 'hidden' },
   mosaicRow: { flexDirection: 'row', gap: 3 },
   mosaicCol: { flexDirection: 'column', gap: 3 },
   mosaicMain: { flex: 1.4 },
-  mosaicTile: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.cream },
+  mosaicTile: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.ochre },
   mosaicImage: { width: '100%', height: '100%' },
-  mosaicEmoji: { fontSize: 22 },
   boardMeta: { flexDirection: 'row', alignItems: 'baseline', gap: 8, paddingLeft: 2 },
   boardChapter: { fontFamily: fonts.serifMediumItalic, fontSize: 13, color: colors.terracottaDark, minWidth: 18 },
   boardName: { fontFamily: fonts.serifBold, fontSize: 15, color: colors.charcoal, lineHeight: 18 },
@@ -574,20 +611,25 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   emptySubtitle: { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.gray, textAlign: 'center' },
+  addButtonWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 92,
+    alignItems: 'center',
+  },
   addButton: {
-    alignSelf: 'center',
     width: 52,
     height: 52,
     borderRadius: 26,
     backgroundColor: colors.terracotta,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 10,
-    elevation: 3,
+    elevation: 6,
     shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 8,
   },
   bottomNav: {
     flexDirection: 'row',

@@ -262,7 +262,7 @@ export default function RecipeEditScreen() {
   }
 
   function handleAddPhoto() {
-    Alert.alert('Ajouter une photo', undefined, [
+    Alert.alert('', undefined, [
       { text: 'Prendre une photo', onPress: handleTakePhoto },
       { text: 'Choisir dans la photothèque', onPress: handlePickFromLibrary },
       { text: 'Annuler', style: 'cancel' },

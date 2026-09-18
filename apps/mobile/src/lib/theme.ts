@@ -1,6 +1,7 @@
 export const colors = {
   terracotta: '#C4552F',
   terracottaDark: '#9E4324',
+  terracottaLight: '#E4B3A1',
   green: '#556B4F',
   greenDark: '#3D4E38',
   cream: '#F7F1E8',
@@ -29,10 +30,10 @@ export const fonts = {
   serifMedium: 'Fraunces_500Medium',
   serifMediumItalic: 'Fraunces_500Medium_Italic',
   serifBold: 'Fraunces_700Bold',
-  sansMedium: 'Inter_500Medium',
-  sansSemiBold: 'Inter_600SemiBold',
-  sansBold: 'Inter_700Bold',
-  sansExtraBold: 'Inter_800ExtraBold',
+  sansMedium: 'Urbanist_500Medium',
+  sansSemiBold: 'Urbanist_600SemiBold',
+  sansBold: 'Urbanist_700Bold',
+  sansExtraBold: 'Urbanist_800ExtraBold',
 };
 
 export const NO_PHOTO_EMOJI = '🍽️';

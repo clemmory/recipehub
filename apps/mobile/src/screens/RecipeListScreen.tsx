@@ -1,11 +1,12 @@
 import { useCallback, useMemo, useState } from 'react';
 import { View, Text, FlatList, Pressable, Image, TextInput, StyleSheet, ActivityIndicator, Alert } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../context/AuthContext';
+import BottomNav from '../components/BottomNav';
 import {
   createTag,
   deleteTag,
@@ -363,7 +364,6 @@ export default function RecipeListScreen() {
   }
 
   const showEmptyState = !loading && !error && recipes.length === 0;
-  const insets = useSafeAreaInsets();
 
   function handleAdd() {
     if (activeTag) {
@@ -712,17 +712,11 @@ export default function RecipeListScreen() {
         </View>
       )}
 
-      <View style={[styles.bottomNav, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-        <Pressable style={styles.navItem} onPress={() => selectView('collections')} hitSlop={8}>
-          <Ionicons name="book" size={22} color={colors.terracotta} />
-        </Pressable>
-        <Pressable style={styles.navItem} onPress={() => navigation.navigate('Profile')} hitSlop={8}>
-          <Feather name="user" size={22} color={colors.terracotta} />
-        </Pressable>
-        <Pressable style={styles.navItem} hitSlop={8}>
-          <Feather name="share-2" size={22} color={colors.terracotta} />
-        </Pressable>
-      </View>
+      <BottomNav
+        active="collections"
+        onCollectionsPress={() => selectView('collections')}
+        onProfilePress={() => navigation.navigate('Profile')}
+      />
     </SafeAreaView>
   );
 }
@@ -916,13 +910,4 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowRadius: 8,
   },
-  bottomNav: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.cream,
-    paddingTop: 12,
-    marginTop: 10,
-  },
-  navItem: { flex: 1, alignItems: 'center' },
 });

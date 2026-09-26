@@ -79,7 +79,9 @@ function Navigator() {
             <Stack.Screen
               name="Profile"
               component={ProfileScreen}
-              options={{ title: 'Profil', headerBackButtonDisplayMode: 'minimal' }}
+              // Reached from the bottom nav, not pushed like a detail screen:
+              // no back button or swipe-back, the bar is the way out.
+              options={{ title: 'Profil', headerBackVisible: false, gestureEnabled: false, animation: 'none' }}
             />
           </>
         ) : (

@@ -95,6 +95,12 @@ export type ScrapedPost = {
   photoCandidates?: { data: Buffer; mimeType: string; label: string }[];
 };
 
+// Distinct from a plain failure (`null`): the post exists but Instagram only
+// shows it to logged-in users (the author limits who can see their content,
+// or it's age-restricted). Nothing to retry — the user has to copy the
+// caption from the Instagram app themselves, so the UI says so explicitly.
+export type ScrapeRestricted = { restricted: true };
+
 // Cookie-consent banner blocks the page on a fresh (cookie-less) browser
 // profile — dismiss it before reading anything. English and French copy
 // both handled since Instagram picks the wording from request locale hints
@@ -154,11 +160,19 @@ async function expandCaption(page: Page): Promise<void> {
 // classes. The caption (username + timestamp + the actual text, no clean
 // separator between them) is reliably the longest match by a wide margin,
 // so picking the longest is more robust than assuming a fixed position.
+//
+// Spans inside a [role="dialog"] are skipped: the cookie-consent dialog's
+// paragraphs use the same classes and are longer than many real captions
+// (285 chars) — found 2026-09-26 on a restricted Reel where the dialog
+// text came back as "the caption". The post permalink page itself is never
+// a dialog, so the real caption isn't affected.
 const CAPTION_SELECTOR = 'span.x1lliihq.x1plvlek';
 
 async function extractCaption(page: Page): Promise<string | null> {
   const text = await page.evaluate((selector) => {
-    const texts = Array.from(document.querySelectorAll(selector)).map((el) => el.textContent?.trim() ?? '');
+    const texts = Array.from(document.querySelectorAll(selector))
+      .filter((el) => !el.closest('[role="dialog"]'))
+      .map((el) => el.textContent?.trim() ?? '');
     return texts.reduce((longest, current) => (current.length > longest.length ? current : longest), '');
   }, CAPTION_SELECTOR);
   log(text ? `caption found (${text.length} chars)` : `no caption found — selector "${CAPTION_SELECTOR}" may be stale`);
@@ -313,7 +327,24 @@ async function captureVideoFrameCandidates(page: Page): Promise<NonNullable<Scra
   return candidates;
 }
 
-export async function scrapeInstagramPost(url: string): Promise<ScrapedPost | null> {
+// Instagram serves a "This content is unavailable" shell (with e.g. "This
+// account has set limits on who can see their profile and content.") for
+// posts it won't show logged-out visitors. Found 2026-09-26: without this
+// check the scraper reported success with that UI text as "the caption"
+// and sent it to Claude. Matched on the page title plus known body strings,
+// in both English and French since the locale isn't ours to pick.
+async function isRestrictedPage(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const title = document.title;
+    const body = document.body?.innerText.slice(0, 3000) ?? '';
+    return (
+      /content is unavailable|contenu n.est pas disponible|contenu indisponible/i.test(title) ||
+      /set limits on who can see|limite qui peut voir|people under 13 can.t see|moins de 13 ans/i.test(body)
+    );
+  });
+}
+
+export async function scrapeInstagramPost(url: string): Promise<ScrapedPost | ScrapeRestricted | null> {
   const executablePath = resolveExecutablePath();
   if (!executablePath) {
     log('no Chromium-based browser found — set PUPPETEER_EXECUTABLE_PATH or install one, see .env.example');
@@ -348,7 +379,12 @@ export async function scrapeInstagramPost(url: string): Promise<ScrapedPost | nu
     await time('post page hydration', () =>
       page
         .waitForFunction(
-          (sel, expectVideo) => (expectVideo ? Boolean(document.querySelector('video')) : Boolean(document.querySelector(sel) || document.querySelector('video'))),
+          // Also stop waiting as soon as the "content unavailable" shell is
+          // up — a restricted post never mounts a <video>, and waiting out
+          // the full timeout for one just delays the inevitable.
+          (sel, expectVideo) =>
+            /content is unavailable|contenu n.est pas disponible|contenu indisponible/i.test(document.title) ||
+            (expectVideo ? Boolean(document.querySelector('video')) : Boolean(document.querySelector(sel) || document.querySelector('video'))),
           { timeout: 8000 },
           CAPTION_SELECTOR,
           isReelUrl,
@@ -357,6 +393,12 @@ export async function scrapeInstagramPost(url: string): Promise<ScrapedPost | nu
     );
 
     await dismissCookieBanner(page);
+
+    if (await isRestrictedPage(page)) {
+      log(`post is restricted to logged-in users (account limits or age gate) — nothing to scrape, after ${Date.now() - overallStart}ms`);
+      return { restricted: true };
+    }
+
     await expandCaption(page);
 
     const caption = await extractCaption(page);

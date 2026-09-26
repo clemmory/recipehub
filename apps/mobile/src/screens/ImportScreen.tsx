@@ -87,6 +87,12 @@ export default function ImportScreen() {
       if (photoValue) setPhoto(photoValue);
 
       const hasCandidates = result.photoCandidates.length > 0;
+      if (result.reason === 'restricted') {
+        setFetchNotice(
+          "Ce post n'est visible que pour les personnes connectées à Instagram (le compte limite l'accès à son contenu). Copie la légende depuis l'app Instagram et colle-la ci-dessous.",
+        );
+        return;
+      }
       if (!result.scraped || (!result.caption && !photoValue && !hasCandidates)) {
         setFetchNotice('Récupération automatique impossible — remplis la légende et/ou ajoute une photo ci-dessous.');
         return;

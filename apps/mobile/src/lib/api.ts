@@ -193,6 +193,9 @@ export type ScrapedPhotoCandidate = { photoBase64: string; photoMimeType: string
 
 export type ScrapedInstagramPost = {
   scraped: boolean;
+  // Set when scraped is false because Instagram only shows this post to
+  // logged-in users (account limits or age gate) — see ImportScreen.
+  reason?: 'restricted' | null;
   caption: string | null;
   photoBase64: string | null;
   photoMimeType: string | null;

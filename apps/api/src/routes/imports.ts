@@ -29,8 +29,17 @@ export async function importRoutes(app: FastifyInstance) {
     }
 
     const scraped = await scrapeInstagramPost(parsed.data.url);
-    if (!scraped) {
-      return { scraped: false, caption: null, photoBase64: null, photoMimeType: null, photoCandidates: [] };
+    if (!scraped || 'restricted' in scraped) {
+      return {
+        scraped: false,
+        // 'restricted': the post only shows to logged-in Instagram users —
+        // the mobile client tells the user to copy the caption by hand.
+        reason: scraped ? 'restricted' : null,
+        caption: null,
+        photoBase64: null,
+        photoMimeType: null,
+        photoCandidates: [],
+      };
     }
 
     return {

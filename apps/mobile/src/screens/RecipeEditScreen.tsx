@@ -30,6 +30,7 @@ import {
 } from '../lib/api';
 import { saveBase64PhotoToFile } from '../lib/photo';
 import { colors, radii, fonts } from '../lib/theme';
+import { groupBySection } from '../lib/ingredients';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'RecipeEdit'>;
 type Route = RouteProp<RootStackParamList, 'RecipeEdit'>;
@@ -114,7 +115,8 @@ export default function RecipeEditScreen() {
     const nextPrepTimeMin = draft?.prepTimeMin ? String(draft.prepTimeMin) : '';
     const nextCookTimeMin = draft?.cookTimeMin ? String(draft.cookTimeMin) : '';
     const nextSteps = draft && draft.steps.length > 0 ? draft.steps : [''];
-    const nextIngredients = draft && draft.ingredients.length > 0 ? draft.ingredients : [{ name: '', quantity: '', section: null }];
+    const nextIngredients =
+      draft && draft.ingredients.length > 0 ? groupBySection(draft.ingredients) : [{ name: '', quantity: '', section: null }];
     const draftTags = draft?.tags ?? [];
     const matchedTags = draftTags.filter((tag) => existingTags.some((e) => e.name.toLowerCase() === tag.toLowerCase()));
     const nextTagsText = matchedTags.join(', ');
@@ -181,7 +183,12 @@ export default function RecipeEditScreen() {
         const nextPrepTimeMin = recipe.prepTimeMin ? String(recipe.prepTimeMin) : '';
         const nextCookTimeMin = recipe.cookTimeMin ? String(recipe.cookTimeMin) : '';
         const nextSteps = recipe.steps.length > 0 ? recipe.steps : [''];
-        const nextIngredients = recipe.ingredients.length > 0 ? recipe.ingredients : [{ name: '', quantity: '', section: null }];
+        // Grouped by section on load (not just at render) so the flat list —
+        // and therefore the order saved back as `position` — has each
+        // section's items together; the unsaved-changes snapshot below uses
+        // this same grouped list, so loading alone doesn't count as a change.
+        const nextIngredients =
+          recipe.ingredients.length > 0 ? groupBySection(recipe.ingredients) : [{ name: '', quantity: '', section: null }];
         const nextTagsText = recipe.tags.join(', ');
         const nextSource = recipe.source ?? '';
 

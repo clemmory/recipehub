@@ -70,6 +70,11 @@ model RecipeIngredient {
   ingredientId String
   quantity     String?
   section      String?
+  // Order of the ingredient in the recipe's list (0-based, as submitted).
+  // Added 2026-09-29: without it rows came back in arbitrary DB order, which
+  // shuffled ingredients and interleaved sections. Rows saved before that
+  // all have 0 — the mobile screens group by section regardless.
+  position     Int        @default(0)
   recipe       Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
   ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
 

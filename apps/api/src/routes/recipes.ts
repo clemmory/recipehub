@@ -86,7 +86,9 @@ const recipeListSelect = {
 } as const;
 
 const recipeDetailInclude = {
-  ingredients: { include: { ingredient: true } },
+  // Without an explicit order, Postgres returns rows in arbitrary order —
+  // that shuffled ingredient lists and interleaved sections (2026-09-29).
+  ingredients: { include: { ingredient: true }, orderBy: { position: 'asc' } },
   tags: { include: { tag: true } },
 } as const;
 
@@ -310,7 +312,9 @@ export async function recipeRoutes(app: FastifyInstance) {
         }
         addedIngredientKeys.add(key);
         await tx.recipeIngredient.create({
-          data: { recipeId: created.id, ingredientId: ingredient.id, quantity: item.quantity, section },
+          // Position = order in the submitted list (skipped duplicates leave
+          // no gap, since only the order matters).
+          data: { recipeId: created.id, ingredientId: ingredient.id, quantity: item.quantity, section, position: addedIngredientKeys.size - 1 },
         });
       }
 
@@ -402,7 +406,9 @@ export async function recipeRoutes(app: FastifyInstance) {
         }
         addedIngredientKeys.add(key);
         await tx.recipeIngredient.create({
-          data: { recipeId: existing.id, ingredientId: ingredient.id, quantity: item.quantity, section },
+          // Position = order in the submitted list (skipped duplicates leave
+          // no gap, since only the order matters).
+          data: { recipeId: existing.id, ingredientId: ingredient.id, quantity: item.quantity, section, position: addedIngredientKeys.size - 1 },
         });
       }
 

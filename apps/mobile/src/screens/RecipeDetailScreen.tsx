@@ -8,6 +8,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../context/AuthContext';
 import { deleteRecipe, getRecipe, resolveUrl, type RecipeDetail } from '../lib/api';
 import { colors, radii, fonts, NO_PHOTO_EMOJI } from '../lib/theme';
+import { groupBySection } from '../lib/ingredients';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'RecipeDetail'>;
 type Route = RouteProp<RootStackParamList, 'RecipeDetail'>;
@@ -44,10 +45,12 @@ export default function RecipeDetailScreen() {
   // Groups consecutive ingredients sharing the same section (e.g. "Pour la
   // pâte") so the same ingredient can appear more than once in the list
   // (different section, different quantity) without looking like a
-  // duplicate — see NOTES.md, 2026-09-11.
+  // duplicate — see NOTES.md, 2026-09-11. `groupBySection` first gathers
+  // each section's items together so a section title is shown only once
+  // even if the list came back interleaved (2026-09-29).
   const ingredientGroups = useMemo(() => {
     const groups: { section: string | null; items: RecipeDetail['ingredients'] }[] = [];
-    for (const ing of recipe?.ingredients ?? []) {
+    for (const ing of groupBySection(recipe?.ingredients ?? [])) {
       const last = groups[groups.length - 1];
       if (last && last.section === ing.section) {
         last.items.push(ing);

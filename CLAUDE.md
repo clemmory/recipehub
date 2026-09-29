@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Recipe Hub — a mobile app (iOS/Android) for capturing and structuring recipes (Instagram share import, photo capture, AI structuring via the Claude API). Phase roadmap: Phase 0 socle → Phase 1 manual CRUD → Phase 2 Instagram import → Phase 3 photo import → Phase 4 social → Phase 5 intelligent.
 
-**Current state: Phase 1 (manual CRUD) closed (2026-09-10), Phase 2 (Instagram import) in progress.** Auth (JWT), recipe CRUD, and photo upload work end-to-end (mobile ↔ API ↔ Postgres/MinIO) and have been through a manual testing pass — see `NOTES.md` ("Traité") and `CONCEPTION.md` section 8 for what was covered, including a same-day fix for per-user scoping of the ingredient/tag vocabulary (found via multi-account testing). Phase 2 slice 1 (scraping + Claude structuring, manual-URL entry point) is implemented — see the Phase 2 paragraph below; native OS share-intent (slice 2) is not started yet.
+**Current state: Phase 1 (manual CRUD) closed (2026-09-10), Phase 2 (Instagram import) in progress.** Auth (JWT), recipe CRUD, and photo upload work end-to-end (mobile ↔ API ↔ Postgres/MinIO) and have been through a manual testing pass — see `NOTES.md` ("Traité") and `CONCEPTION.md` section 8 for what was covered, including a same-day fix for per-user scoping of the ingredient/tag vocabulary (found via multi-account testing). Phase 2 slice 1 (scraping + Claude structuring, manual-URL entry point) is implemented, and it and the follow-up UI work (collections, Profile tab) were fully validated on device on 2026-09-29 — see the Phase 2 paragraph below; native OS share-intent (slice 2) is the next step, not started yet.
 
 ## Repo structure
 

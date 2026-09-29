@@ -45,9 +45,9 @@ export default function ImportScreen() {
 
   // Shared by the automatic flow (right after a successful scrape) and the
   // manual "Structurer avec l'IA" button (used when scraping failed and the
-  // user filled the caption/photo in by hand). `candidates` carries a
-  // Reel's frame options through to RecipeEditScreen, which is where the
-  // user actually picks one (rather than pausing this screen on a guess).
+  // user filled the caption/photo in by hand). `candidates` carries the
+  // photo choices (carousel images, or video frames as a fallback) through
+  // to RecipeEditScreen, which is where the user actually picks one.
   async function structureAndNavigate(
     captionValue: string | undefined,
     photoValue: Photo | null,

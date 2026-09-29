@@ -8,7 +8,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:migrate": "prisma migrate dev",
+    "check:instagram": "tsx scripts/check-instagram.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",

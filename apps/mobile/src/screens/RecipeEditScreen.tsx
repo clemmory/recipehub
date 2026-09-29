@@ -133,7 +133,10 @@ export default function RecipeEditScreen() {
     if (route.params?.photo) setNewPhoto(route.params.photo);
     if (route.params?.photoCandidates && route.params.photoCandidates.length > 0) {
       setPhotoCandidates(route.params.photoCandidates);
-      setPickingPhoto(true);
+      // A carousel comes with its first image already set as the photo —
+      // the choices stay one tap away ("Changer la photo"). Only video
+      // frames (no photo at all) open the picker right away.
+      setPickingPhoto(!route.params.photo);
     }
 
     initialSnapshotRef.current = buildFormSnapshot({
@@ -602,7 +605,7 @@ export default function RecipeEditScreen() {
         {showPhotoPicker ? (
           <>
             <Text style={styles.notice}>
-              Cette vidéo n'a pas de couverture récupérable automatiquement — choisis une image ci-dessous.
+              Choisis la photo de la recette ci-dessous.
             </Text>
             <View style={styles.candidatesRow}>
               {photoCandidates!.map((candidate) => (

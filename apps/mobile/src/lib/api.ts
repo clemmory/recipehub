@@ -199,8 +199,9 @@ export type ScrapedInstagramPost = {
   caption: string | null;
   photoBase64: string | null;
   photoMimeType: string | null;
-  // Reels with no single reliable cover come back with a few frame
-  // candidates instead of a single guessed photo — see ImportScreen.
+  // Several images to choose from: a carousel's images (photoBase64 is the
+  // first), or video frames when the API's browser fallback couldn't get a
+  // Reel's cover (photoBase64 null). Picked in RecipeEditScreen.
   photoCandidates: ScrapedPhotoCandidate[];
 };
 

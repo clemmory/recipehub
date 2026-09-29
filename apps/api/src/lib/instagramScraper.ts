@@ -1,18 +1,32 @@
 import fs from 'node:fs';
 import puppeteer, { type Browser, type Page } from 'puppeteer-core';
+import { extractShortcode, scrapeViaEmbeddedJson } from './instagramJsonScraper';
 
 // Best-effort, unofficial scraping of a public Instagram post's caption and
 // media — fragile by nature (depends on Instagram's markup, can break on any
-// change, blocked for private posts). Accepted risk, see CONCEPTION.md §1.
+// change, blocked for restricted posts). Accepted risk, see CONCEPTION.md §1.
 //
-// Uses a real (headless) browser rather than a plain HTTP fetch: testing on
-// 2026-09-11 showed Instagram serves an empty app shell — no og:description/
-// og:image, no embedded caption JSON — to non-browser requests, on both
-// Reels and photo posts. A headless browser (even without TLS-fingerprint
-// tricks) gets the real, JS-hydrated page. See NOTES.md for the full
-// diagnostic. Never throws: returns null on any failure so the caller can
-// fall back to manual entry (paste caption / add photo) rather than
-// surfacing an error.
+// Strategy (see `scrapeInstagramPost` at the bottom of this file), in order:
+//   1. Plain fetch + the post data Instagram embeds as JSON in the page
+//      (instagramJsonScraper.ts) — ~1.5s, clean caption, the Reel's real
+//      cover, every carousel image. Primary since 2026-09-29.
+//   2. Headless browser (everything else in this file) — ~5-11s, reads the
+//      caption from the rendered DOM and grabs video frames for Reels.
+//      Kept as a fallback only: it's what detects restricted posts, and it
+//      covers the case where Instagram changes its embedded JSON.
+//   3. Manual entry in ImportScreen when both fail.
+//
+// History (full details in NOTES.md, "En cours - Phase 2"):
+//   2026-09-10  plain fetch + og: meta tags — always failed (empty shell).
+//   2026-09-11  headless browser: real page, caption from a CSS selector.
+//   2026-09-14  shared browser instance (~-57% time), Reel cover = user
+//               picks between two captured video frames.
+//   2026-09-26  restricted posts detected instead of scraping UI text.
+//   2026-09-29  plain fetch again, but with full browser headers — Instagram
+//               then embeds the post's JSON; headless browser → fallback.
+//
+// Never throws: returns null on any failure so the caller can fall back to
+// manual entry (paste caption / add photo) rather than surfacing an error.
 
 const BROWSER_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -50,18 +64,28 @@ async function getBrowser(executablePath: string): Promise<Browser> {
   if (sharedBrowser && sharedBrowser.connected) {
     return sharedBrowser;
   }
-  sharedBrowser = await puppeteer.launch({
-    executablePath,
-    headless: true,
-    args: [
-      '--disable-gpu',
-      '--disable-extensions',
-      '--disable-default-apps',
-      '--disable-sync',
-      '--disable-background-networking',
-      '--mute-audio',
-    ],
-  });
+  const launch = () =>
+    puppeteer.launch({
+      executablePath,
+      headless: true,
+      args: [
+        '--disable-gpu',
+        '--disable-extensions',
+        '--disable-default-apps',
+        '--disable-sync',
+        '--disable-background-networking',
+        '--mute-audio',
+      ],
+    });
+  // One retry: seen 2026-09-29, a launch failed once with an empty
+  // "Failed to launch the browser process: Code: 0" and succeeded right
+  // after — transient, but enough to turn an import into a failure.
+  try {
+    sharedBrowser = await launch();
+  } catch (err) {
+    log(`browser launch failed, retrying once: ${(err as Error).message.split('\n')[0]}`);
+    sharedBrowser = await launch();
+  }
   return sharedBrowser;
 }
 
@@ -88,10 +112,14 @@ async function time<T>(label: string, fn: () => Promise<T>): Promise<T> {
 
 export type ScrapedPost = {
   caption: string | null;
+  // Default recipe photo: the single photo, a Reel's cover, or a carousel's
+  // first image (JSON path) — null when the browser fallback only has
+  // video frames to offer.
   photo: { data: Buffer; mimeType: string } | null;
-  // Video posts (Reels) have no single reliable cover (see captureVideoFrame
-  // below) — instead of guessing one frame, several candidates are offered
-  // and the user picks. Absent/empty for photo posts, which use `photo`.
+  // Several images the user picks from in RecipeEditScreen: every image of
+  // a carousel (JSON path, alongside `photo`), or captured video frames
+  // when the browser fallback couldn't get a Reel's cover (see
+  // captureVideoFrame below). Absent when there's only one image.
   photoCandidates?: { data: Buffer; mimeType: string; label: string }[];
 };
 
@@ -151,9 +179,10 @@ async function expandCaption(page: Page): Promise<void> {
 // Instagram's caption sits in an atomically-class-named <span> (Facebook's
 // "stylex" CSS system) — the exact classes were found by inspecting a real
 // post on 2026-09-11 and can drift whenever Instagram redeploys its
-// frontend. Kept to a single, easily-updatable selector rather than
-// parsing Instagram's internal JSON blob (more robust long-term, but far
-// more complex — not worth it for a v1).
+// frontend. Kept to a single, easily-updatable selector. (Reading
+// Instagram's internal JSON instead — the more robust option this comment
+// used to defer — is what instagramJsonScraper.ts does since 2026-09-29;
+// this selector now only runs in the browser fallback.)
 //
 // The selector alone isn't unique: it also matches short UI strings ("Never
 // miss a post from...", "Meta", "Privacy"...) that share the same atomic
@@ -345,11 +374,38 @@ async function isRestrictedPage(page: Page): Promise<boolean> {
 }
 
 export async function scrapeInstagramPost(url: string): Promise<ScrapedPost | ScrapeRestricted | null> {
+  const start = Date.now();
+  const json = await scrapeViaEmbeddedJson(url);
+  if (json.ok) {
+    log(`import via embedded JSON succeeded in ${Date.now() - start}ms`);
+    return json.post;
+  }
+  if (json.reason === 'bad-url') {
+    // Not a post URL at all — the browser wouldn't do any better.
+    return null;
+  }
+  // `no-media-json` is also what a restricted post looks like from the JSON
+  // side — the browser fallback is what tells the two apart (and gives the
+  // user the dedicated "copy the caption by hand" message).
+  log(`embedded JSON unusable (${json.reason}) — falling back to the headless browser`);
+  const fallback = await scrapeWithHeadlessBrowser(url);
+  log(
+    `headless-browser fallback finished in ${Date.now() - start}ms total: ${
+      fallback === null ? 'nothing usable' : 'restricted' in fallback ? 'restricted post' : 'got data'
+    }`,
+  );
+  return fallback;
+}
+
+export async function scrapeWithHeadlessBrowser(url: string): Promise<ScrapedPost | ScrapeRestricted | null> {
   const executablePath = resolveExecutablePath();
   if (!executablePath) {
     log('no Chromium-based browser found — set PUPPETEER_EXECUTABLE_PATH or install one, see .env.example');
     return null;
   }
+  // Same clean URL as the JSON path — drops share-tracking params (?stkn=...).
+  const shortcode = extractShortcode(url);
+  if (shortcode) url = `https://www.instagram.com/${shortcode.kind}/${shortcode.code}/`;
   log(`scraping ${url} using browser at ${executablePath}`);
 
   const overallStart = Date.now();

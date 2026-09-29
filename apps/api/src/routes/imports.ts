@@ -47,9 +47,9 @@ export async function importRoutes(app: FastifyInstance) {
       caption: scraped.caption,
       photoBase64: scraped.photo ? scraped.photo.data.toString('base64') : null,
       photoMimeType: scraped.photo?.mimeType ?? null,
-      // Video posts (Reels) with no single reliable cover come back with
-      // several frame candidates instead — the mobile client lets the user
-      // pick one rather than the API guessing.
+      // Several images to choose from — every image of a carousel (with
+      // `photo` = the first one), or video frames when the browser fallback
+      // couldn't get a Reel's cover. The user picks in RecipeEditScreen.
       photoCandidates: (scraped.photoCandidates ?? []).map((c) => ({
         photoBase64: c.data.toString('base64'),
         photoMimeType: c.mimeType,

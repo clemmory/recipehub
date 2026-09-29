@@ -18,7 +18,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../context/AuthContext';
-import { scrapeInstagramUrl, structureRecipe, type ScrapedPhotoCandidate } from '../lib/api';
+import { ApiError, scrapeInstagramUrl, structureRecipe, type ScrapedPhotoCandidate } from '../lib/api';
 import { saveBase64PhotoToFile } from '../lib/photo';
 import { colors, radii, fonts } from '../lib/theme';
 
@@ -26,6 +26,34 @@ type Nav = NativeStackNavigationProp<RootStackParamList, 'Import'>;
 type Route = RouteProp<RootStackParamList, 'Import'>;
 
 type Photo = { uri: string; base64: string; mimeType: string };
+
+// What went wrong when the automatic import didn't work — shown as a short
+// title + an explanation of what to do next. Replaced (2026-09-29) a single
+// "Récupération automatique impossible" that never said why.
+type FetchNotice = { title: string; body: string };
+
+const NOTICES = {
+  unavailable: {
+    title: "Ce post n'est pas accessible",
+    body: "Son auteur en limite l'accès aux personnes connectées à Instagram, ou il a été supprimé. Copie la légende depuis l'app Instagram et colle-la ci-dessous : l'IA s'occupe du reste.",
+  },
+  badUrl: {
+    title: "Ce lien n'est pas un post Instagram",
+    body: 'Sur le post ou le Reel, utilise Partager → Copier le lien, puis colle-le ici.',
+  },
+  failed: {
+    title: "Instagram n'a pas répondu",
+    body: 'Réessaie dans un instant, ou colle la légende ci-dessous pour continuer sans attendre.',
+  },
+  serverError: {
+    title: 'Le serveur a rencontré un problème',
+    body: 'Réessaie dans un instant, ou colle la légende ci-dessous pour continuer.',
+  },
+  offline: {
+    title: 'Connexion au serveur impossible',
+    body: 'Vérifie ta connexion internet puis réessaie.',
+  },
+} satisfies Record<string, FetchNotice>;
 
 export default function ImportScreen() {
   const navigation = useNavigation<Nav>();
@@ -35,7 +63,7 @@ export default function ImportScreen() {
 
   const [url, setUrl] = useState('');
   const [fetching, setFetching] = useState(false);
-  const [fetchNotice, setFetchNotice] = useState<string | null>(null);
+  const [fetchNotice, setFetchNotice] = useState<FetchNotice | null>(null);
 
   const [caption, setCaption] = useState('');
   const [photo, setPhoto] = useState<Photo | null>(null);
@@ -46,7 +74,7 @@ export default function ImportScreen() {
   // Shared by the automatic flow (right after a successful scrape) and the
   // manual "Structurer avec l'IA" button (used when scraping failed and the
   // user filled the caption/photo in by hand). `candidates` carries the
-  // photo choices (carousel images, or video frames as a fallback) through
+  // photo choices (a carousel's images) through
   // to RecipeEditScreen, which is where the user actually picks one.
   async function structureAndNavigate(
     captionValue: string | undefined,
@@ -86,15 +114,17 @@ export default function ImportScreen() {
       if (result.caption) setCaption(result.caption);
       if (photoValue) setPhoto(photoValue);
 
-      const hasCandidates = result.photoCandidates.length > 0;
-      if (result.reason === 'restricted') {
+      if (!result.scraped) {
+        // 'unavailable' covers both restricted (visible only to logged-in
+        // Instagram users) and deleted posts — the API can't tell which
+        // from a plain fetch (2026-09-29).
         setFetchNotice(
-          "Ce post n'est visible que pour les personnes connectées à Instagram (le compte limite l'accès à son contenu). Copie la légende depuis l'app Instagram et colle-la ci-dessous.",
+          result.reason === 'unavailable'
+            ? NOTICES.unavailable
+            : result.reason === 'bad-url'
+              ? NOTICES.badUrl
+              : NOTICES.failed,
         );
-        return;
-      }
-      if (!result.scraped || (!result.caption && !photoValue && !hasCandidates)) {
-        setFetchNotice('Récupération automatique impossible — remplis la légende et/ou ajoute une photo ci-dessous.');
         return;
       }
 
@@ -106,7 +136,13 @@ export default function ImportScreen() {
         setError(err instanceof Error ? err.message : "Impossible de structurer la recette avec l'IA");
       }
     } catch (err) {
-      setFetchNotice('Récupération automatique impossible — remplis la légende et/ou ajoute une photo ci-dessous.');
+      // An ApiError means the server answered with an error: 400 is its URL
+      // validation ("Lien invalide" — not a URL at all), anything else a
+      // server-side problem. No ApiError = the request never got an answer
+      // (phone offline, wrong EXPO_PUBLIC_API_URL, API down).
+      setFetchNotice(
+        err instanceof ApiError ? (err.status === 400 ? NOTICES.badUrl : NOTICES.serverError) : NOTICES.offline,
+      );
     } finally {
       setFetching(false);
     }
@@ -180,7 +216,12 @@ export default function ImportScreen() {
             {fetching ? <ActivityIndicator color={colors.white} /> : <Text style={styles.fetchButtonText}>Importer</Text>}
           </Pressable>
         </View>
-        {fetchNotice ? <Text style={styles.notice}>{fetchNotice}</Text> : null}
+        {fetchNotice ? (
+          <View style={styles.noticeCard}>
+            <Text style={styles.noticeTitle}>{fetchNotice.title}</Text>
+            <Text style={styles.noticeBody}>{fetchNotice.body}</Text>
+          </View>
+        ) : null}
 
         <Text style={styles.sectionTitle}>Légende</Text>
         <TextInput
@@ -267,7 +308,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   fetchButtonText: { fontFamily: fonts.sansSemiBold, color: colors.white, fontSize: 13 },
-  notice: { fontFamily: fonts.sansMedium, fontSize: 12, color: colors.gray, marginTop: 6 },
+  noticeCard: {
+    marginTop: 10,
+    padding: 12,
+    backgroundColor: colors.white,
+    borderRadius: radii.md,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.terracotta,
+  },
+  noticeTitle: { fontFamily: fonts.sansBold, fontSize: 14, color: colors.charcoal, marginBottom: 4 },
+  noticeBody: { fontFamily: fonts.sansMedium, fontSize: 13, lineHeight: 18, color: colors.gray },
   sectionTitle: { fontFamily: fonts.serifBold, fontSize: 18, color: colors.charcoal, marginTop: 16 },
   captionInput: { minHeight: 90, textAlignVertical: 'top' },
   photo: { width: '100%', height: 200, borderRadius: radii.lg, backgroundColor: colors.border, marginTop: 8 },

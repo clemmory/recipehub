@@ -28,13 +28,19 @@ export async function importRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: firstZodMessage(parsed.error) });
     }
 
-    const scraped = await scrapeInstagramPost(parsed.data.url);
-    if (!scraped || 'restricted' in scraped) {
+    const result = await scrapeInstagramPost(parsed.data.url);
+    if (!result.ok) {
       return {
         scraped: false,
-        // 'restricted': the post only shows to logged-in Instagram users —
-        // the mobile client tells the user to copy the caption by hand.
-        reason: scraped ? 'restricted' : null,
+        // Drives the message ImportScreen shows (2026-09-29, a message per
+        // case instead of one generic "impossible"):
+        // - 'unavailable': page came back without this post's data —
+        //   restricted to logged-in users or deleted, indistinguishable
+        //   from here → "copy the caption by hand";
+        // - 'bad-url': a valid URL but not an Instagram post link;
+        // - 'failed': Instagram didn't answer properly (network, timeout,
+        //   image download) → "try again".
+        reason: result.reason === 'unavailable' || result.reason === 'bad-url' ? result.reason : 'failed',
         caption: null,
         photoBase64: null,
         photoMimeType: null,
@@ -42,14 +48,14 @@ export async function importRoutes(app: FastifyInstance) {
       };
     }
 
+    const scraped = result.post;
     return {
       scraped: true,
       caption: scraped.caption,
-      photoBase64: scraped.photo ? scraped.photo.data.toString('base64') : null,
-      photoMimeType: scraped.photo?.mimeType ?? null,
-      // Several images to choose from — every image of a carousel (with
-      // `photo` = the first one), or video frames when the browser fallback
-      // couldn't get a Reel's cover. The user picks in RecipeEditScreen.
+      photoBase64: scraped.photo.data.toString('base64'),
+      photoMimeType: scraped.photo.mimeType,
+      // Every image of a carousel (with `photo` = the first one), for the
+      // user to pick from in RecipeEditScreen. Empty for a single image.
       photoCandidates: (scraped.photoCandidates ?? []).map((c) => ({
         photoBase64: c.data.toString('base64'),
         photoMimeType: c.mimeType,
@@ -58,7 +64,11 @@ export async function importRoutes(app: FastifyInstance) {
     };
   });
 
-  app.post('/imports/structure', async (req, reply) => {
+  // The photo arrives base64-encoded in the JSON body (~4/3 of the image
+  // size). Fastify's default 1 MB body limit rejected full-resolution Reel
+  // covers with a 413 once the scraper started returning them (2026-09-29)
+  // — raised to the same 10 MB as the recipe photo upload (app.ts).
+  app.post('/imports/structure', { bodyLimit: 10 * 1024 * 1024 }, async (req, reply) => {
     const parsed = structureSchema.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: firstZodMessage(parsed.error) });

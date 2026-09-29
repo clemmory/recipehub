@@ -79,11 +79,11 @@ export default function RecipeEditScreen() {
   const [existingPhotoUrl, setExistingPhotoUrl] = useState<string | null>(null);
   const [newPhoto, setNewPhoto] = useState<PickedPhoto | null>(null);
   const [removePhoto, setRemovePhoto] = useState(false);
-  // Set when a Reel had no single reliable cover — the user picks one of
-  // these frame candidates instead of the app guessing (see
-  // instagramScraper.ts / ImportScreen). Kept around (not cleared once a
-  // choice is made) so "Changer la photo" can bring the tile picker back
-  // up instead of jumping straight to the camera/library picker.
+  // A carousel's images (Instagram import) — the first one arrives as the
+  // photo, the others stay one tap away. Kept around (not cleared once a
+  // choice is made) so "Changer Photo" can bring the tile picker back up
+  // instead of jumping straight to the camera/library picker. (Until
+  // 2026-09-29 these were also video frames of a Reel with no cover.)
   const [photoCandidates, setPhotoCandidates] = useState<ScrapedPhotoCandidate[] | null>(null);
   const [pickingPhoto, setPickingPhoto] = useState(false);
 
@@ -135,10 +135,6 @@ export default function RecipeEditScreen() {
     if (route.params?.photo) setNewPhoto(route.params.photo);
     if (route.params?.photoCandidates && route.params.photoCandidates.length > 0) {
       setPhotoCandidates(route.params.photoCandidates);
-      // A carousel comes with its first image already set as the photo —
-      // the choices stay one tap away ("Changer la photo"). Only video
-      // frames (no photo at all) open the picker right away.
-      setPickingPhoto(!route.params.photo);
     }
 
     initialSnapshotRef.current = buildFormSnapshot({
@@ -233,7 +229,7 @@ export default function RecipeEditScreen() {
     setPickingPhoto(false);
   }
 
-  // With candidates available, "Changer la photo" re-opens the tile picker
+  // With candidates available, "Changer Photo" re-opens the tile picker
   // instead of jumping straight to the camera/library picker.
   function handleChangePhoto() {
     if (photoCandidates && photoCandidates.length > 0) {
@@ -662,7 +658,7 @@ export default function RecipeEditScreen() {
             <View style={styles.photoActions}>
               {hasPhotoCandidates ? (
                 <Pressable style={styles.linkButton} onPress={handleChangePhoto}>
-                  <Text style={styles.linkButtonText}>Changer la photo</Text>
+                  <Text style={styles.linkButtonText}>Changer Photo</Text>
                 </Pressable>
               ) : newPhoto || showExistingPhoto ? (
                 <Pressable style={styles.linkButton} onPress={handleClearPhoto}>

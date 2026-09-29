@@ -21,9 +21,8 @@ export type RootStackParamList = {
     draft?: StructuredRecipeDraft;
     source?: string;
     photo?: { uri: string; name: string; type: string };
-    // Several images to choose from — a carousel's images (with `photo`
-    // preselected to the first), or video frames when the API couldn't get
-    // a Reel's cover (no `photo`: the picker opens right away).
+    // A carousel's images to choose from, with `photo` preselected to the
+    // first — the picker opens from "Changer Photo".
     photoCandidates?: ScrapedPhotoCandidate[];
   };
   // Set when the user starts an import from an empty collection's "Ajouter

@@ -49,7 +49,7 @@ export function resolveUrl(path: string) {
   return `${API_URL}${path}`;
 }
 
-class ApiError extends Error {
+export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
@@ -193,15 +193,19 @@ export type ScrapedPhotoCandidate = { photoBase64: string; photoMimeType: string
 
 export type ScrapedInstagramPost = {
   scraped: boolean;
-  // Set when scraped is false because Instagram only shows this post to
-  // logged-in users (account limits or age gate) — see ImportScreen.
-  reason?: 'restricted' | null;
+  // Why scraped is false — each gets its own message in ImportScreen:
+  // 'unavailable' = Instagram served the page without this post's data
+  // (restricted to logged-in users, or deleted — indistinguishable from the
+  // API side); 'bad-url' = not an Instagram post link; 'failed' = Instagram
+  // didn't answer properly (worth retrying).
+  reason?: 'unavailable' | 'bad-url' | 'failed' | null;
   caption: string | null;
+  // Always set when scraped is true (single photo, Reel cover, or a
+  // carousel's first image).
   photoBase64: string | null;
   photoMimeType: string | null;
-  // Several images to choose from: a carousel's images (photoBase64 is the
-  // first), or video frames when the API's browser fallback couldn't get a
-  // Reel's cover (photoBase64 null). Picked in RecipeEditScreen.
+  // Every image of a carousel (photoBase64 is the first), picked from in
+  // RecipeEditScreen. Empty for a single image.
   photoCandidates: ScrapedPhotoCandidate[];
 };
 

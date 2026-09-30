@@ -46,7 +46,7 @@ async function main() {
           const draft = await structureRecipe(
             {
               caption: scraped.post.caption ?? undefined,
-              photo: config.withPhoto ? scraped.post.photo : undefined,
+              photos: config.withPhoto ? [scraped.post.photo] : undefined,
               existingTags: EXISTING_TAGS,
             },
             { model: config.model },

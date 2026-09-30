@@ -68,7 +68,10 @@ function log(message: string): void {
 export async function structureRecipe(
   input: {
     caption?: string;
-    photo?: { data: Buffer; mimeType: string };
+    // Several photos = the pages of one recipe, in order (a cookbook recipe
+    // spread over two pages — photo import, 2026-09-30). Instagram sends at
+    // most one.
+    photos?: { data: Buffer; mimeType: string }[];
     existingTags?: string[];
   },
   // Overrides used by scripts/bench-structure.ts to compare configurations.
@@ -77,15 +80,24 @@ export async function structureRecipe(
   const model = options.model ?? MODEL;
   const content: Anthropic.ContentBlockParam[] = [];
 
-  if (input.photo) {
+  const photos = input.photos ?? [];
+  for (const photo of photos) {
     content.push({
       type: 'image',
-      source: { type: 'base64', media_type: input.photo.mimeType as 'image/jpeg', data: input.photo.data.toString('base64') },
+      source: { type: 'base64', media_type: photo.mimeType as 'image/jpeg', data: photo.data.toString('base64') },
+    });
+  }
+  if (photos.length > 1) {
+    content.push({
+      type: 'text',
+      text: `Ces ${photos.length} photos sont les pages successives d'une seule et même recette, dans l'ordre : combine-les en une seule recette.`,
     });
   }
   content.push({
     type: 'text',
-    text: input.caption ? `Légende :\n${input.caption}` : 'Aucune légende fournie, base-toi uniquement sur la photo.',
+    text: input.caption
+      ? `Légende :\n${input.caption}`
+      : `Aucune légende fournie, base-toi uniquement sur ${photos.length > 1 ? 'les photos' : 'la photo'}.`,
   });
   if (input.existingTags && input.existingTags.length > 0) {
     content.push({
@@ -111,7 +123,7 @@ export async function structureRecipe(
   // nothing showed where its 8-11s went.
   log(
     `${model}: ${Date.now() - start}ms, input ${response.usage.input_tokens} tokens, ` +
-      `output ${response.usage.output_tokens} tokens, photo ${input.photo ? 'sent' : 'not sent'}, stop ${response.stop_reason}`,
+      `output ${response.usage.output_tokens} tokens, ${photos.length} photo(s) sent, stop ${response.stop_reason}`,
   );
 
   const toolUse = response.content.find((block) => block.type === 'tool_use');

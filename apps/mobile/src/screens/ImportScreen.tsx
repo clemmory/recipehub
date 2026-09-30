@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../context/AuthContext';
 import { ApiError, importInstagram, structureRecipe, type ScrapedPhotoCandidate, type StructuredRecipeDraft } from '../lib/api';
 import { saveBase64PhotoToFile } from '../lib/photo';
+import { useProgressMessage, type ProgressStep } from '../lib/progress';
 import { colors, radii, fonts } from '../lib/theme';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Import'>;
@@ -55,12 +56,8 @@ const NOTICES = {
   },
 } satisfies Record<string, FetchNotice>;
 
-// Progress messages shown while waiting (2026-09-29): an import takes ~8-12s
-// and a bare spinner felt stuck. The import is a single server call, so the
-// app can't know the real phase — each message's `at` (ms since the start)
-// follows the measured timings instead: scraping ~1.5-3s, then Claude ~6-9s.
-type ProgressStep = { at: number; text: string };
-
+// Timings measured 2026-09-29: an import takes ~8-12s, scraping ~1.5-3s,
+// then Claude ~6-9s.
 const IMPORT_PROGRESS: ProgressStep[] = [
   { at: 0, text: 'Lecture du post Instagram…' },
   { at: 2500, text: "L'IA lit la légende et structure la recette…" },
@@ -73,23 +70,6 @@ const STRUCTURE_PROGRESS: ProgressStep[] = [
   { at: 7000, text: "Presque fini, l'IA met en forme les étapes…" },
   { at: 14000, text: "C'est plus long que d'habitude, encore un instant…" },
 ];
-
-// Returns the message for the time elapsed since `active` became true, or
-// null when inactive. Restarts from the first step on every new run.
-function useProgressMessage(active: boolean, steps: ProgressStep[]): string | null {
-  const [index, setIndex] = useState(0);
-  useEffect(() => {
-    // Reset when the wait ends (not when the next one starts), so a new run
-    // never flashes the previous run's last message for one render.
-    if (!active) {
-      setIndex(0);
-      return;
-    }
-    const timers = steps.slice(1).map((step, i) => setTimeout(() => setIndex(i + 1), step.at));
-    return () => timers.forEach(clearTimeout);
-  }, [active, steps]);
-  return active ? steps[index].text : null;
-}
 
 export default function ImportScreen() {
   const navigation = useNavigation<Nav>();

@@ -303,6 +303,7 @@ export default function RecipeListScreen() {
     Alert.alert('', undefined, [
       { text: 'Sélectionner des recettes existantes', onPress: () => setPickingExistingForTag(true) },
       { text: 'Importer depuis Instagram', onPress: () => navigation.navigate('Import', { presetTag: tag }) },
+      { text: 'Importer depuis des photos', onPress: () => navigation.navigate('PhotoImport', { presetTag: tag }) },
       {
         text: 'Ajouter une recette',
         onPress: () =>
@@ -373,6 +374,7 @@ export default function RecipeListScreen() {
     Alert.alert('', undefined, [
       { text: 'Nouvelle recette', onPress: () => navigation.navigate('RecipeEdit', {}) },
       { text: 'Importer depuis Instagram', onPress: () => navigation.navigate('Import') },
+      { text: 'Importer depuis des photos', onPress: () => navigation.navigate('PhotoImport') },
       {
         text: 'Nouvelle collection',
         onPress: () => {

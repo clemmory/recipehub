@@ -224,6 +224,18 @@ export async function importInstagram(token: string, url: string) {
   });
 }
 
+// Photo import (Phase 3): 1-5 photos of one recipe (cookbook pages, in
+// order), structured by Claude in one call. The photos only feed the AI —
+// they aren't kept as the recipe's photo.
+export async function importPhotos(token: string, photos: { photoBase64: string; photoMimeType: string }[]) {
+  return request<StructuredRecipeDraft>('/imports/photos', {
+    method: 'POST',
+    token,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ photos }),
+  });
+}
+
 export async function structureRecipe(
   token: string,
   input: { caption?: string; photoBase64?: string; photoMimeType?: string },

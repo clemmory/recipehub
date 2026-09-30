@@ -19,6 +19,17 @@ const structureSchema = z
     message: 'Une légende ou une photo est requise',
   });
 
+// Photo import (Phase 3, 2026-09-30): up to 5 pictures of one recipe (a
+// cookbook recipe often spans two pages), structured in a single Claude call.
+const MAX_IMPORT_PHOTOS = 5;
+
+const photosSchema = z.object({
+  photos: z
+    .array(z.object({ photoBase64: z.string().min(1), photoMimeType: z.string().nullish() }))
+    .min(1, 'Ajoute au moins une photo')
+    .max(MAX_IMPORT_PHOTOS, `${MAX_IMPORT_PHOTOS} photos maximum`),
+});
+
 // Below this many characters, a caption can't hold a recipe on its own
 // ("Recette en description 👇", "Tarte aux fraises 🍓 #dessert") — the post's
 // photo is then sent to Claude too. Above it, the photo is left out: an
@@ -78,7 +89,7 @@ export async function importRoutes(app: FastifyInstance) {
     try {
       draft = await structureRecipe({
         caption: scraped.caption ?? undefined,
-        photo: sendPhoto ? scraped.photo : undefined,
+        photos: sendPhoto ? [scraped.photo] : undefined,
         existingTags: await userTagNames(req.user.userId),
       });
       req.log.info(`[imports] structured tags: ${draft.tags.join(', ')}`);
@@ -126,7 +137,7 @@ export async function importRoutes(app: FastifyInstance) {
       req.log.info(`[imports] structuring with ${existingTags.length} existing tag(s) as context`);
       const draft = await structureRecipe({
         caption: caption ?? undefined,
-        photo: photoBase64 ? { data: Buffer.from(photoBase64, 'base64'), mimeType: photoMimeType ?? 'image/jpeg' } : undefined,
+        photos: photoBase64 ? [{ data: Buffer.from(photoBase64, 'base64'), mimeType: photoMimeType ?? 'image/jpeg' }] : undefined,
         existingTags,
       });
       req.log.info(`[imports] structured tags: ${draft.tags.join(', ')}`);
@@ -134,6 +145,38 @@ export async function importRoutes(app: FastifyInstance) {
     } catch (err) {
       req.log.error(err);
       return reply.code(502).send({ error: "Impossible de structurer la recette avec l'IA" });
+    }
+  });
+
+  // Photo import (Phase 3): the photos are the recipe itself (cookbook page,
+  // magazine, handwritten card) and only feed Claude — they're not kept as
+  // the recipe's photo, the user adds a dish photo later if they want one.
+  // The app resizes each photo to ≤1568px before sending (what Claude scales
+  // down to anyway), ~0.3-0.6 MB of base64 each, so 20 MB leaves headroom.
+  app.post('/imports/photos', { bodyLimit: 20 * 1024 * 1024 }, async (req, reply) => {
+    const parsed = photosSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: firstZodMessage(parsed.error) });
+    }
+    const photos = parsed.data.photos.map((p) => ({
+      data: Buffer.from(p.photoBase64, 'base64'),
+      mimeType: p.photoMimeType ?? 'image/jpeg',
+    }));
+    req.log.info(
+      `[imports] photo import: ${photos.length} photo(s), ${photos.map((p) => `${Math.round(p.data.length / 1024)}KB`).join(' + ')}`,
+    );
+
+    const start = Date.now();
+    try {
+      const draft = await structureRecipe({ photos, existingTags: await userTagNames(req.user.userId) });
+      req.log.info(
+        `[imports] photo import structured in ${Date.now() - start}ms: "${draft.title}", ` +
+          `${draft.ingredients.length} ingredient(s), ${draft.steps.length} step(s), tags: ${draft.tags.join(', ')}`,
+      );
+      return draft;
+    } catch (err) {
+      req.log.error(err);
+      return reply.code(502).send({ error: "L'IA n'a pas pu lire la recette sur ces photos" });
     }
   });
 }

@@ -8,6 +8,7 @@ import RecipeListScreen from '../screens/RecipeListScreen';
 import RecipeDetailScreen from '../screens/RecipeDetailScreen';
 import RecipeEditScreen from '../screens/RecipeEditScreen';
 import ImportScreen from '../screens/ImportScreen';
+import PhotoImportScreen from '../screens/PhotoImportScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import { colors, fonts } from '../lib/theme';
 import type { StructuredRecipeDraft, ScrapedPhotoCandidate } from '../lib/api';
@@ -28,6 +29,8 @@ export type RootStackParamList = {
   // Set when the user starts an import from an empty collection's "Ajouter
   // une recette" menu — forces this collection onto the imported recipe.
   Import: { presetTag?: string } | undefined;
+  // Photo import (Phase 3) — same presetTag as Import.
+  PhotoImport: { presetTag?: string } | undefined;
   Profile: undefined;
 };
 
@@ -75,6 +78,11 @@ function Navigator() {
               name="Import"
               component={ImportScreen}
               options={{ title: 'Importer depuis Instagram', headerBackButtonDisplayMode: 'minimal' }}
+            />
+            <Stack.Screen
+              name="PhotoImport"
+              component={PhotoImportScreen}
+              options={{ title: 'Importer depuis des photos', headerBackButtonDisplayMode: 'minimal' }}
             />
             <Stack.Screen
               name="Profile"

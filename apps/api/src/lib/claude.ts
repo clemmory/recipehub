@@ -61,11 +61,20 @@ const SYSTEM_PROMPT =
   '(temps, portions, quantité) est absente, mets null plutôt que de la deviner. Utilise ' +
   "l'outil record_recipe pour renvoyer le résultat.";
 
-export async function structureRecipe(input: {
-  caption?: string;
-  photo?: { data: Buffer; mimeType: string };
-  existingTags?: string[];
-}): Promise<StructuredRecipe> {
+function log(message: string): void {
+  console.log(`[claude] ${message}`);
+}
+
+export async function structureRecipe(
+  input: {
+    caption?: string;
+    photo?: { data: Buffer; mimeType: string };
+    existingTags?: string[];
+  },
+  // Overrides used by scripts/bench-structure.ts to compare configurations.
+  options: { model?: string } = {},
+): Promise<StructuredRecipe> {
+  const model = options.model ?? MODEL;
   const content: Anthropic.ContentBlockParam[] = [];
 
   if (input.photo) {
@@ -85,15 +94,25 @@ export async function structureRecipe(input: {
     });
   }
 
+  const start = Date.now();
   const response = await client.messages.create({
-    model: MODEL,
+    model,
     max_tokens: 4096,
     system: SYSTEM_PROMPT,
-    output_config: { effort: 'low' },
+    // `effort` isn't accepted by Haiku 4.5 (400) — only sent to the models
+    // that support it.
+    ...(model.startsWith('claude-haiku') ? {} : { output_config: { effort: 'low' as const } }),
     tools: [RECORD_RECIPE_TOOL],
     tool_choice: { type: 'tool', name: 'record_recipe' },
     messages: [{ role: 'user', content }],
   });
+  // Timing + token usage on every call (2026-09-29): the Claude step became
+  // the slowest part of an import once scraping dropped to ~1.5s, and
+  // nothing showed where its 8-11s went.
+  log(
+    `${model}: ${Date.now() - start}ms, input ${response.usage.input_tokens} tokens, ` +
+      `output ${response.usage.output_tokens} tokens, photo ${input.photo ? 'sent' : 'not sent'}, stop ${response.stop_reason}`,
+  );
 
   const toolUse = response.content.find((block) => block.type === 'tool_use');
   if (!toolUse || toolUse.type !== 'tool_use') {

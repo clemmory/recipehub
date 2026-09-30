@@ -11,3 +11,6 @@ apps/**/.env
 Thumbs.db
 NOTES.md
 CONCEPTION.md
+
+# Output of npm run bench:structure (scraped captions + drafts)
+apps/api/scripts/bench-structure-results.json

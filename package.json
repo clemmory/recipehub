@@ -9,7 +9,8 @@
     "dev:mobile": "npm run start -w apps/mobile",
     "prisma:generate": "npm run prisma:generate -w apps/api",
     "prisma:migrate": "npm run prisma:migrate -w apps/api",
-    "check:instagram": "npm run check:instagram -w apps/api"
+    "check:instagram": "npm run check:instagram -w apps/api",
+    "bench:structure": "npm run bench:structure -w apps/api"
   },
   "allowScripts": {
     "@prisma/client@5.22.0": true,

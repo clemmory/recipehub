@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -18,7 +18,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../context/AuthContext';
-import { ApiError, scrapeInstagramUrl, structureRecipe, type ScrapedPhotoCandidate } from '../lib/api';
+import { ApiError, importInstagram, structureRecipe, type ScrapedPhotoCandidate, type StructuredRecipeDraft } from '../lib/api';
 import { saveBase64PhotoToFile } from '../lib/photo';
 import { colors, radii, fonts } from '../lib/theme';
 
@@ -55,6 +55,42 @@ const NOTICES = {
   },
 } satisfies Record<string, FetchNotice>;
 
+// Progress messages shown while waiting (2026-09-29): an import takes ~8-12s
+// and a bare spinner felt stuck. The import is a single server call, so the
+// app can't know the real phase — each message's `at` (ms since the start)
+// follows the measured timings instead: scraping ~1.5-3s, then Claude ~6-9s.
+type ProgressStep = { at: number; text: string };
+
+const IMPORT_PROGRESS: ProgressStep[] = [
+  { at: 0, text: 'Lecture du post Instagram…' },
+  { at: 2500, text: "L'IA lit la légende et structure la recette…" },
+  { at: 9000, text: "Presque fini, l'IA met en forme les étapes…" },
+  { at: 16000, text: "C'est plus long que d'habitude, encore un instant…" },
+];
+
+const STRUCTURE_PROGRESS: ProgressStep[] = [
+  { at: 0, text: "L'IA structure la recette…" },
+  { at: 7000, text: "Presque fini, l'IA met en forme les étapes…" },
+  { at: 14000, text: "C'est plus long que d'habitude, encore un instant…" },
+];
+
+// Returns the message for the time elapsed since `active` became true, or
+// null when inactive. Restarts from the first step on every new run.
+function useProgressMessage(active: boolean, steps: ProgressStep[]): string | null {
+  const [index, setIndex] = useState(0);
+  useEffect(() => {
+    // Reset when the wait ends (not when the next one starts), so a new run
+    // never flashes the previous run's last message for one render.
+    if (!active) {
+      setIndex(0);
+      return;
+    }
+    const timers = steps.slice(1).map((step, i) => setTimeout(() => setIndex(i + 1), step.at));
+    return () => timers.forEach(clearTimeout);
+  }, [active, steps]);
+  return active ? steps[index].text : null;
+}
+
 export default function ImportScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
@@ -71,21 +107,15 @@ export default function ImportScreen() {
   const [structuring, setStructuring] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Shared by the automatic flow (right after a successful scrape) and the
-  // manual "Structurer avec l'IA" button (used when scraping failed and the
-  // user filled the caption/photo in by hand). `candidates` carries the
-  // photo choices (a carousel's images) through
-  // to RecipeEditScreen, which is where the user actually picks one.
-  async function structureAndNavigate(
-    captionValue: string | undefined,
-    photoValue: Photo | null,
-    candidates?: ScrapedPhotoCandidate[],
-  ) {
-    const draft = await structureRecipe(token!, {
-      caption: captionValue,
-      photoBase64: photoValue?.base64,
-      photoMimeType: photoValue?.mimeType,
-    });
+  const importProgress = useProgressMessage(fetching, IMPORT_PROGRESS);
+  const structureProgress = useProgressMessage(structuring, STRUCTURE_PROGRESS);
+
+  // Shared by the automatic flow (the import call returns the draft) and
+  // the manual "Structurer avec l'IA" button (used when the import failed
+  // and the user filled the caption/photo in by hand). `candidates` carries
+  // the photo choices (a carousel's images) through to RecipeEditScreen,
+  // which is where the user actually picks one.
+  function navigateToEdit(draft: StructuredRecipeDraft, photoValue: Photo | null, candidates?: ScrapedPhotoCandidate[]) {
     if (presetTag && !draft.tags.includes(presetTag)) draft.tags = [...draft.tags, presetTag];
     const savedPhoto = photoValue ? saveBase64PhotoToFile(photoValue.base64, photoValue.mimeType) : undefined;
     navigation.replace('RecipeEdit', {
@@ -102,7 +132,8 @@ export default function ImportScreen() {
     setFetchNotice(null);
     setFetching(true);
     try {
-      const result = await scrapeInstagramUrl(token, url.trim());
+      // One call does it all server-side: scrape + Claude structuring.
+      const result = await importInstagram(token, url.trim());
       const photoValue: Photo | null =
         result.photoBase64 && result.photoMimeType
           ? {
@@ -128,12 +159,14 @@ export default function ImportScreen() {
         return;
       }
 
-      // Scraping succeeded — go straight to the structured recipe, no need
-      // for the user to review the raw caption/photo or tap a second button.
-      try {
-        await structureAndNavigate(result.caption ?? undefined, photoValue, result.photoCandidates);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Impossible de structurer la recette avec l'IA");
+      // Scraping and structuring both worked — go straight to the structured
+      // recipe, no need for the user to review the raw caption/photo.
+      if (result.draft) {
+        navigateToEdit(result.draft, photoValue, result.photoCandidates);
+      } else {
+        // Scraped but Claude failed: caption and photo are filled in above,
+        // the "Structurer avec l'IA" button retries with them.
+        setError("L'IA n'a pas pu structurer la recette. Réessaie avec le bouton « Structurer avec l'IA » ci-dessous.");
       }
     } catch (err) {
       // An ApiError means the server answered with an error: 400 is its URL
@@ -188,7 +221,12 @@ export default function ImportScreen() {
     setError(null);
     setStructuring(true);
     try {
-      await structureAndNavigate(caption.trim() || undefined, photo);
+      const draft = await structureRecipe(token, {
+        caption: caption.trim() || undefined,
+        photoBase64: photo?.base64,
+        photoMimeType: photo?.mimeType,
+      });
+      navigateToEdit(draft, photo);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Impossible de structurer la recette avec l'IA");
     } finally {
@@ -216,6 +254,7 @@ export default function ImportScreen() {
             {fetching ? <ActivityIndicator color={colors.white} /> : <Text style={styles.fetchButtonText}>Importer</Text>}
           </Pressable>
         </View>
+        {importProgress ? <Text style={styles.progressText}>{importProgress}</Text> : null}
         {fetchNotice ? (
           <View style={styles.noticeCard}>
             <Text style={styles.noticeTitle}>{fetchNotice.title}</Text>
@@ -254,6 +293,7 @@ export default function ImportScreen() {
             <Text style={styles.structureButtonText}>Structurer avec l'IA</Text>
           )}
         </Pressable>
+        {structureProgress ? <Text style={[styles.progressText, styles.progressTextCentered]}>{structureProgress}</Text> : null}
 
         <Pressable
           style={styles.linkButton}
@@ -308,6 +348,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   fetchButtonText: { fontFamily: fonts.sansSemiBold, color: colors.white, fontSize: 13 },
+  progressText: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.terracottaDark, marginTop: 8 },
+  progressTextCentered: { textAlign: 'center' },
   noticeCard: {
     marginTop: 10,
     padding: 12,

@@ -9,7 +9,8 @@
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "check:instagram": "tsx scripts/check-instagram.ts"
+    "check:instagram": "tsx scripts/check-instagram.ts",
+    "bench:structure": "tsx scripts/bench-structure.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",

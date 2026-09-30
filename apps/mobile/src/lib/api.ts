@@ -191,8 +191,14 @@ export async function deleteRecipe(token: string, id: string) {
 
 export type ScrapedPhotoCandidate = { photoBase64: string; photoMimeType: string; label: string };
 
-export type ScrapedInstagramPost = {
+// Result of POST /imports/instagram — the post scraped AND structured by
+// Claude in a single server call (2026-09-29; used to be /imports/scrape +
+// a second /imports/structure call sending the photo back).
+export type InstagramImport = {
   scraped: boolean;
+  // The structured recipe. Null when scraping failed, or when it worked but
+  // Claude didn't — caption/photo are then still set, for a manual retry.
+  draft: StructuredRecipeDraft | null;
   // Why scraped is false — each gets its own message in ImportScreen:
   // 'unavailable' = Instagram served the page without this post's data
   // (restricted to logged-in users, or deleted — indistinguishable from the
@@ -209,8 +215,8 @@ export type ScrapedInstagramPost = {
   photoCandidates: ScrapedPhotoCandidate[];
 };
 
-export async function scrapeInstagramUrl(token: string, url: string) {
-  return request<ScrapedInstagramPost>('/imports/scrape', {
+export async function importInstagram(token: string, url: string) {
+  return request<InstagramImport>('/imports/instagram', {
     method: 'POST',
     token,
     headers: { 'Content-Type': 'application/json' },

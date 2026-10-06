@@ -10,6 +10,8 @@ export type RecipeSummary = {
   servings: number | null;
   photoUrl: string | null;
   tags: string[];
+  source: string | null;
+  favorite: boolean;
   createdAt: string;
 };
 
@@ -18,7 +20,6 @@ export type RecipeIngredient = { name: string; quantity: string | null; section:
 export type RecipeDetail = RecipeSummary & {
   steps: string[];
   ingredients: RecipeIngredient[];
-  source: string | null;
   updatedAt: string;
 };
 
@@ -189,6 +190,30 @@ export async function deleteRecipe(token: string, id: string) {
   return request<void>(`/recipes/${id}`, { method: 'DELETE', token });
 }
 
+export async function setFavorite(token: string, id: string, favorite: boolean) {
+  return request<{ favorite: boolean }>(`/recipes/${id}/favorite`, {
+    method: 'PATCH',
+    token,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ favorite }),
+  });
+}
+
+// PUT /recipes/:id replaces the whole recipe — this rebuilds its full input
+// from a fetched detail, for callers that only change one thing (tags, photo).
+export function recipeInputFrom(detail: RecipeDetail): RecipeInput {
+  return {
+    title: detail.title,
+    prepTimeMin: detail.prepTimeMin ?? undefined,
+    cookTimeMin: detail.cookTimeMin ?? undefined,
+    servings: detail.servings ?? undefined,
+    source: detail.source ?? undefined,
+    steps: detail.steps,
+    ingredients: detail.ingredients,
+    tags: detail.tags,
+  };
+}
+
 export type ScrapedPhotoCandidate = { photoBase64: string; photoMimeType: string; label: string };
 
 // Result of POST /imports/instagram — the post scraped AND structured by
@@ -215,9 +240,12 @@ export type InstagramImport = {
   photoCandidates: ScrapedPhotoCandidate[];
 };
 
-export async function importInstagram(token: string, url: string) {
+// `signal` lets the waiting screen's "Annuler" drop the call (the server
+// still finishes its Claude request — only the answer is ignored).
+export async function importInstagram(token: string, url: string, signal?: AbortSignal) {
   return request<InstagramImport>('/imports/instagram', {
     method: 'POST',
+    signal,
     token,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
@@ -227,9 +255,14 @@ export async function importInstagram(token: string, url: string) {
 // Photo import (Phase 3): 1-5 photos of one recipe (cookbook pages, in
 // order), structured by Claude in one call. The photos only feed the AI —
 // they aren't kept as the recipe's photo.
-export async function importPhotos(token: string, photos: { photoBase64: string; photoMimeType: string }[]) {
+export async function importPhotos(
+  token: string,
+  photos: { photoBase64: string; photoMimeType: string }[],
+  signal?: AbortSignal,
+) {
   return request<StructuredRecipeDraft>('/imports/photos', {
     method: 'POST',
+    signal,
     token,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ photos }),
@@ -239,9 +272,11 @@ export async function importPhotos(token: string, photos: { photoBase64: string;
 export async function structureRecipe(
   token: string,
   input: { caption?: string; photoBase64?: string; photoMimeType?: string },
+  signal?: AbortSignal,
 ) {
   return request<StructuredRecipeDraft>('/imports/structure', {
     method: 'POST',
+    signal,
     token,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),

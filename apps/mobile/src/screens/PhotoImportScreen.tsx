@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, Image, ScrollView, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -9,8 +10,18 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../context/AuthContext';
 import { ApiError, importPhotos } from '../lib/api';
 import { preparePhotoForAi, type AiPhoto } from '../lib/photo';
-import { useProgressMessage, type ProgressStep } from '../lib/progress';
+import type { ProgressStep } from '../lib/progress';
 import { colors, radii, fonts } from '../lib/theme';
+import ImportProgress from '../components/ImportProgress';
+import {
+  BottomActionBar,
+  DashedTile,
+  FieldLabel,
+  RoundButton,
+  ScreenHeading,
+  SecondaryButton,
+  SIDE,
+} from '../components/ui';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'PhotoImport'>;
 type Route = RouteProp<RootStackParamList, 'PhotoImport'>;
@@ -19,32 +30,39 @@ type Route = RouteProp<RootStackParamList, 'PhotoImport'>;
 // rarely spans more than two pages, 5 leaves room for a long one.
 const MAX_PHOTOS = 5;
 
-// Estimated, not measured yet (2026-09-30): Claude reads every page and
-// rewrites the whole recipe — to adjust from the API's "[imports] photo
-// import structured in Xms" logs after a few real imports.
-const PHOTO_PROGRESS: ProgressStep[] = [
-  { at: 0, text: "L'IA lit les photos…" },
-  { at: 4000, text: "L'IA structure la recette…" },
-  { at: 12000, text: "Presque fini, l'IA met en forme les étapes…" },
-  { at: 22000, text: "C'est plus long que d'habitude, encore un instant…" },
+// One page measured at ~9s (2026-09-30) — to adjust from the API's
+// "[imports] photo import structured in Xms" logs after a few more imports.
+const PHOTO_STEPS: ProgressStep[] = [
+  { at: 0, text: 'Lecture des pages' },
+  { at: 3500, text: 'Repérage des ingrédients et des quantités' },
+  { at: 8000, text: 'Mise en forme des étapes' },
 ];
 
-// Phase 3 — photo import (2026-09-30): photograph a recipe (cookbook page,
-// magazine, handwritten card), possibly over several pages, and let Claude
-// structure it. The photos only feed the AI: the recipe starts without a
-// photo (placeholder on the list), the user adds a dish photo later.
+// Phase 3 — photo import (2026-09-30, redesigned 2026-10-01): photograph a
+// recipe (cookbook page, magazine, handwritten card), possibly over several
+// pages, and let Claude structure it. The photos only feed the AI: the
+// recipe starts with a colored cover, the user adds a dish photo later.
 export default function PhotoImportScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const { token } = useAuth();
   const presetTag = route.params?.presetTag;
+  // Set when coming from a failed Instagram import: screenshots of the post.
+  const source = route.params?.source;
 
   const [photos, setPhotos] = useState<AiPhoto[]>([]);
   const [preparing, setPreparing] = useState(false);
   const [structuring, setStructuring] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const progress = useProgressMessage(structuring, PHOTO_PROGRESS);
+  const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  // No swipe-back while waiting: "Annuler" is the way out.
+  useEffect(() => {
+    navigation.setOptions({ gestureEnabled: !structuring });
+  }, [navigation, structuring]);
+
   const remaining = MAX_PHOTOS - photos.length;
 
   async function addAssets(assets: ImagePicker.ImagePickerAsset[]) {
@@ -60,7 +78,7 @@ export default function PhotoImportScreen() {
       setPhotos((current) => [...current, ...prepared].slice(0, MAX_PHOTOS));
     } catch (err) {
       console.log(`[photo-import] preparing photos failed: ${(err as Error).message}`);
-      setError("Impossible de préparer la photo. Réessaie avec une autre.");
+      setError('Impossible de préparer la photo. Réessaie avec une autre.');
     } finally {
       setPreparing(false);
     }
@@ -102,17 +120,24 @@ export default function PhotoImportScreen() {
   async function handleStructure() {
     if (!token || photos.length === 0) return;
     setError(null);
+    const controller = new AbortController();
+    abortRef.current = controller;
     setStructuring(true);
     const start = Date.now();
     try {
       const draft = await importPhotos(
         token,
         photos.map((p) => ({ photoBase64: p.base64, photoMimeType: p.mimeType })),
+        controller.signal,
       );
-      console.log(`[photo-import] ${photos.length} photo(s) structured in ${Date.now() - start}ms: "${draft.title}"`);
+      if (controller.signal.aborted) return;
+      console.log(
+        `[photo-import] ${photos.length} photo(s) structured in ${Date.now() - start}ms: "${draft.title}"${source ? ` (screenshots of ${source})` : ''}`,
+      );
       if (presetTag && !draft.tags.includes(presetTag)) draft.tags = [...draft.tags, presetTag];
-      navigation.replace('RecipeEdit', { draft });
+      navigation.replace('RecipeEdit', { draft, fromAi: true, source });
     } catch (err) {
+      if (controller.signal.aborted) return;
       // No ApiError = the request never got an answer (offline, wrong
       // EXPO_PUBLIC_API_URL, API down).
       setError(
@@ -120,137 +145,170 @@ export default function PhotoImportScreen() {
           ? err.message
           : 'Connexion au serveur impossible. Vérifie ta connexion internet puis réessaie.',
       );
-    } finally {
       setStructuring(false);
     }
   }
 
-  const busy = preparing || structuring;
+  function handleCancel() {
+    console.log('[photo-import] cancelled while waiting');
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setStructuring(false);
+  }
+
+  if (structuring) {
+    return (
+      <ImportProgress
+        steps={PHOTO_STEPS}
+        expectedMs={photos.length > 1 ? 14000 : 10000}
+        previewUri={photos[0]?.uri}
+        previewBadge={{ icon: 'file-text', text: photos.length > 1 ? `${photos.length} pages` : '1 page' }}
+        onCancel={handleCancel}
+      />
+    );
+  }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.intro}>
-        Photographie la recette : page de livre, magazine, fiche écrite à la main… Si elle tient sur plusieurs pages,
-        ajoute-les dans l'ordre ({MAX_PHOTOS} maximum).
-      </Text>
-
-      {photos.length > 0 ? (
-        <View style={styles.grid}>
-          {photos.map((photo, index) => (
-            <View key={photo.uri} style={styles.tile}>
-              <Image source={{ uri: photo.uri }} style={styles.tileImage} />
-              <View style={styles.pageBadge}>
-                <Text style={styles.pageBadgeText}>{index + 1}</Text>
-              </View>
-              {!structuring && (
-                <Pressable style={styles.removeBadge} onPress={() => handleRemove(index)} hitSlop={8}>
-                  <Feather name="x" size={14} color={colors.white} />
-                </Pressable>
-              )}
-            </View>
-          ))}
-        </View>
-      ) : null}
-
-      {preparing ? (
-        <View style={styles.preparingRow}>
-          <ActivityIndicator color={colors.terracotta} />
-          <Text style={styles.progressText}>Préparation des photos…</Text>
-        </View>
-      ) : null}
-
-      {remaining > 0 ? (
-        <View style={styles.addRow}>
-          <Pressable style={styles.addButton} onPress={handleTakePhoto} disabled={busy}>
-            <Feather name="camera" size={18} color={colors.terracotta} />
-            <Text style={styles.addButtonText}>{photos.length > 0 ? 'Page suivante' : 'Prendre une photo'}</Text>
-          </Pressable>
-          <Pressable style={styles.addButton} onPress={handlePickFromLibrary} disabled={busy}>
-            <Feather name="image" size={18} color={colors.terracotta} />
-            <Text style={styles.addButtonText}>Photothèque</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-
-      <Pressable
-        style={[styles.structureButton, (photos.length === 0 || busy) && styles.structureButtonDisabled]}
-        onPress={handleStructure}
-        disabled={photos.length === 0 || busy}
-      >
-        {structuring ? (
-          <ActivityIndicator color={colors.white} />
+    <SafeAreaView style={styles.screen} edges={['top']}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <RoundButton icon="chevron-left" label="Retour" onPress={() => navigation.goBack()} />
+        {source ? (
+          <ScreenHeading
+            kicker="Depuis Instagram"
+            title="Depuis des captures"
+            intro="Sur le post, touche « plus » pour afficher toute la légende, puis fais des captures d'écran. Une longue légende ? Ajoute toutes les captures, dans l'ordre."
+          />
         ) : (
-          <Text style={styles.structureButtonText}>Lire la recette avec l'IA</Text>
+          <ScreenHeading
+            kicker="Nouvelle recette"
+            title="Depuis des photos"
+            intro="Photographie chaque page dans l'ordre. Une recette sur deux pages ? Ajoute-les toutes les deux."
+          />
         )}
-      </Pressable>
-      {progress ? <Text style={[styles.progressText, styles.progressTextCentered]}>{progress}</Text> : null}
 
-      <Text style={styles.footnote}>
-        Les photos servent seulement à lire la recette, elles ne deviennent pas sa photo : tu pourras en ajouter une du
-        plat ensuite.
-      </Text>
-    </ScrollView>
+        <View style={styles.block}>
+          <FieldLabel right={<Text style={styles.counter}>{photos.length} / {MAX_PHOTOS}</Text>}>
+            {source ? 'Captures' : 'Pages'}
+          </FieldLabel>
+          <View style={styles.grid}>
+            {photos.map((photo, index) => (
+              <View key={photo.uri} style={styles.tile}>
+                <Image source={{ uri: photo.uri }} style={styles.tileImage} />
+                <View style={styles.pageBadge}>
+                  <Text style={styles.pageBadgeText}>{index + 1}</Text>
+                </View>
+                <Pressable
+                  style={styles.removeTarget}
+                  onPress={() => handleRemove(index)}
+                  accessibilityLabel={`Retirer la page ${index + 1}`}
+                >
+                  <View style={styles.removeBadge}>
+                    <Feather name="x" size={14} color={colors.ink} />
+                  </View>
+                </Pressable>
+              </View>
+            ))}
+            {preparing ? (
+              <View style={[styles.tile, styles.preparingTile]}>
+                <ActivityIndicator color={colors.terracotta} />
+              </View>
+            ) : remaining > 0 ? (
+              // Screenshots only live in the photo library: no camera then.
+              <DashedTile
+                vertical
+                icon="plus"
+                label={
+                  source
+                    ? photos.length > 0
+                      ? 'Capture suivante'
+                      : 'Choisir les captures'
+                    : photos.length > 0
+                      ? 'Page suivante'
+                      : 'Première page'
+                }
+                onPress={source ? handlePickFromLibrary : handleTakePhoto}
+                style={styles.tile}
+              />
+            ) : null}
+          </View>
+        </View>
+
+        {remaining > 0 && !source && (
+          <View style={styles.buttonRow}>
+            <SecondaryButton icon="camera" label="Appareil photo" style={styles.flex} onPress={handleTakePhoto} disabled={preparing} />
+            <SecondaryButton icon="image" label="Photothèque" style={styles.flex} onPress={handlePickFromLibrary} disabled={preparing} />
+          </View>
+        )}
+
+        <View style={styles.noteRow}>
+          <View style={styles.noteSwatch} />
+          <Text style={styles.noteText}>
+            Les photos servent seulement à lire la recette. Elle démarrera avec une couverture colorée : tu pourras ajouter
+            une photo du plat plus tard.
+          </Text>
+        </View>
+
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+      </ScrollView>
+      <BottomActionBar
+        label="Lire la recette avec l'IA"
+        onPress={handleStructure}
+        disabled={photos.length === 0 || preparing}
+      />
+    </SafeAreaView>
   );
 }
 
+const TILE_GAP = 10;
+
 const styles = StyleSheet.create({
-  container: { padding: 16, gap: 8, paddingBottom: 48, backgroundColor: colors.cream, flexGrow: 1 },
-  intro: { fontFamily: fonts.sansMedium, fontSize: 14, lineHeight: 20, color: colors.gray },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 },
-  tile: { width: '31%', aspectRatio: 3 / 4 },
-  tileImage: { width: '100%', height: '100%', borderRadius: radii.md, backgroundColor: colors.border },
+  screen: { flex: 1, backgroundColor: colors.white },
+  flex: { flex: 1 },
+  content: { paddingHorizontal: SIDE, paddingTop: 12, paddingBottom: 32 },
+  block: { marginTop: 28 },
+  counter: { fontFamily: fonts.sans, fontSize: 14, color: colors.text2 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: TILE_GAP, marginTop: 12 },
+  tile: { width: '31.5%', height: 150 },
+  tileImage: { width: '100%', height: '100%', borderRadius: radii.photo, backgroundColor: colors.surface },
+  preparingTile: {
+    borderRadius: radii.photo,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   pageBadge: {
     position: 'absolute',
-    top: 6,
-    left: 6,
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    paddingHorizontal: 6,
-    backgroundColor: colors.terracotta,
+    top: 8,
+    left: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.ink,
     alignItems: 'center',
     justifyContent: 'center',
   },
   pageBadgeText: { fontFamily: fonts.sansBold, fontSize: 12, color: colors.white },
-  removeBadge: {
+  // 36px touch target around a 26px visual badge.
+  removeTarget: {
     position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(38, 34, 32, 0.7)',
+    top: 3,
+    right: 3,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  preparingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
-  addRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
-  addButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.terracotta,
+  removeBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: colors.white,
-  },
-  addButtonText: { fontFamily: fonts.sansSemiBold, fontSize: 14, color: colors.terracotta },
-  error: { fontFamily: fonts.sansMedium, color: colors.danger, marginTop: 12 },
-  structureButton: {
-    backgroundColor: colors.terracotta,
-    borderRadius: radii.md,
-    padding: 14,
     alignItems: 'center',
-    marginTop: 24,
+    justifyContent: 'center',
   },
-  structureButtonDisabled: { opacity: 0.5 },
-  structureButtonText: { fontFamily: fonts.sansSemiBold, color: colors.white, fontSize: 16 },
-  progressText: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.terracottaDark },
-  progressTextCentered: { textAlign: 'center', marginTop: 8 },
-  footnote: { fontFamily: fonts.sansMedium, fontSize: 12, lineHeight: 17, color: colors.gray, marginTop: 24 },
+  buttonRow: { flexDirection: 'row', gap: 12, marginTop: 16 },
+  noteRow: { flexDirection: 'row', gap: 14, marginTop: 28 },
+  noteSwatch: { width: 34, height: 26, borderRadius: 6, backgroundColor: colors.terracotta, marginTop: 2 },
+  noteText: { flex: 1, fontFamily: fonts.sans, fontSize: 14, lineHeight: 20, color: colors.text2 },
+  error: { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.danger, marginTop: 20 },
 });

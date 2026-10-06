@@ -1,39 +1,55 @@
+// "Blanc éditorial" direction (2026-09-30, replaces the cream one): white
+// background, near-black ink, structure from hairlines and white space rather
+// than boxes, terracotta as an accent only (labels, step numbers, active tab,
+// + button) — see NOTES.md for the full design reference.
 export const colors = {
-  terracotta: '#C4552F',
-  terracottaDark: '#9E4324',
-  terracottaLight: '#E4B3A1',
-  green: '#556B4F',
-  greenDark: '#3D4E38',
-  cream: '#F7F1E8',
-  charcoal: '#262220',
-  gray: '#8A8078',
+  ink: '#141211',
   white: '#FFFFFF',
-  border: '#ECE4D8',
+  surface: '#F3F2F0',
+  hairline: '#E7E5E2',
+  // Secondary text — ≥ 4.5:1 on white.
+  text2: '#6B6763',
+  navInactive: '#8C8883',
+  checked: '#9A9690',
+  // Dashed border of the « add » tiles (next page, new collection, photo).
+  dashed: '#C9C5C0',
+  // Dimmed backdrop behind a bottom sheet.
+  scrim: 'rgba(20, 18, 17, 0.42)',
+  terracotta: '#C4552F',
+  // Small uppercase labels on white: #C4552F is too low-contrast at that size.
+  terracottaText: '#B0441F',
+  green: '#3D4E38',
   danger: '#C0392B',
   dangerBg: '#FBEAEA',
-  ochre: '#C99A3D',
-  rust: '#A6452E',
 };
 
 export const radii = {
   sm: 8,
+  photo: 10,
   md: 12,
   lg: 14,
   xl: 24,
-  pill: 20,
+  pill: 999,
 };
 
-// Fraunces (serif, titles/accents) + Inter (sans, interface) — loaded in App.tsx via
-// @expo-google-fonts. Emoji is the generic "no photo" placeholder pending a real
-// cuisine-icon set (still an open decision — see NOTES.md).
+// Fraunces (serif, titles) + Inter (sans, interface) — loaded in App.tsx via
+// @expo-google-fonts.
 export const fonts = {
   serifMedium: 'Fraunces_500Medium',
   serifMediumItalic: 'Fraunces_500Medium_Italic',
+  serifSemiBold: 'Fraunces_600SemiBold',
   serifBold: 'Fraunces_700Bold',
-  sansMedium: 'Urbanist_500Medium',
-  sansSemiBold: 'Urbanist_600SemiBold',
-  sansBold: 'Urbanist_700Bold',
-  sansExtraBold: 'Urbanist_800ExtraBold',
+  sans: 'Inter_400Regular',
+  sansMedium: 'Inter_500Medium',
+  sansSemiBold: 'Inter_600SemiBold',
+  sansBold: 'Inter_700Bold',
 };
 
-export const NO_PHOTO_EMOJI = '🍽️';
+// Small uppercase "rubrique" label (tags · duration, section kickers).
+export const labelText = {
+  fontFamily: fonts.sansBold,
+  fontSize: 11,
+  letterSpacing: 1.1,
+  textTransform: 'uppercase' as const,
+  color: colors.terracottaText,
+};

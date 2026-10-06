@@ -39,7 +39,9 @@ const stepsSchema = z.array(z.string().min(1, "L'étape ne peut pas être vide")
 // at least one is now required per recipe, same enforcement point as
 // title/ingredients/steps rather than trusting the mobile client alone.
 const tagsSchema = z.array(z.string().min(1, 'Le tag ne peut pas être vide')).min(1, 'Choisis ou crée au moins une collection');
-const createTagSchema = z.object({ name: z.string().trim().min(1, 'Le nom de la collection est obligatoire') });
+const favoriteSchema = z.object({ favorite: z.boolean() });
+
+const createTagSchema =z.object({ name: z.string().trim().min(1, 'Le nom de la collection est obligatoire') });
 
 // Case-insensitive matching only for ingredient & tag find-or-create, so
 // "Tomate" and "tomate" resolve to the same row. Deliberately NOT
@@ -81,6 +83,8 @@ const recipeListSelect = {
   cookTimeMin: true,
   servings: true,
   photoKey: true,
+  source: true,
+  favorite: true,
   createdAt: true,
   tags: { include: { tag: true } },
 } as const;
@@ -99,6 +103,8 @@ function serializeSummary(recipe: {
   cookTimeMin: number | null;
   servings: number | null;
   photoKey: string | null;
+  source: string | null;
+  favorite: boolean;
   createdAt: Date;
   tags: { tag: { name: string } }[];
 }) {
@@ -110,6 +116,8 @@ function serializeSummary(recipe: {
     servings: recipe.servings,
     tags: recipe.tags.map((rt) => rt.tag.name),
     photoUrl: recipe.photoKey ? `/recipes/${recipe.id}/photo?v=${encodeURIComponent(recipe.photoKey)}` : null,
+    source: recipe.source,
+    favorite: recipe.favorite,
     createdAt: recipe.createdAt,
   };
 }
@@ -123,6 +131,7 @@ function serializeDetail(recipe: {
   servings: number | null;
   photoKey: string | null;
   source: string | null;
+  favorite: boolean;
   createdAt: Date;
   updatedAt: Date;
   ingredients: { quantity: string | null; section: string | null; ingredient: { name: string } }[];
@@ -136,6 +145,7 @@ function serializeDetail(recipe: {
     cookTimeMin: recipe.cookTimeMin,
     servings: recipe.servings,
     source: recipe.source,
+    favorite: recipe.favorite,
     photoUrl: recipe.photoKey ? `/recipes/${recipe.id}/photo?v=${encodeURIComponent(recipe.photoKey)}` : null,
     ingredients: recipe.ingredients.map((ri) => ({ name: ri.ingredient.name, quantity: ri.quantity, section: ri.section })),
     tags: recipe.tags.map((rt) => rt.tag.name),
@@ -236,6 +246,20 @@ export async function recipeRoutes(app: FastifyInstance) {
     });
     if (!recipe) return reply.code(404).send({ error: 'Recette introuvable' });
     return serializeDetail(recipe);
+  });
+
+  // Toggled straight from the recipe screen's heart — a dedicated route
+  // since PUT /recipes/:id has no partial-update mode (2026-09-30).
+  app.patch<{ Params: { id: string } }>('/recipes/:id/favorite', async (req, reply) => {
+    const parsed = favoriteSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: firstZodMessage(parsed.error) });
+
+    const recipe = await prisma.recipe.findFirst({ where: { id: req.params.id, userId: req.user.userId } });
+    if (!recipe) return reply.code(404).send({ error: 'Recette introuvable' });
+
+    await prisma.recipe.update({ where: { id: recipe.id }, data: { favorite: parsed.data.favorite } });
+    console.log(`[recipes] recipe ${recipe.id} favorite -> ${parsed.data.favorite}`);
+    return { favorite: parsed.data.favorite };
   });
 
   app.get<{ Params: { id: string } }>('/recipes/:id/photo', async (req, reply) => {

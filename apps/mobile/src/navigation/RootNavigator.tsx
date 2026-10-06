@@ -21,16 +21,21 @@ export type RootStackParamList = {
     recipeId?: string;
     draft?: StructuredRecipeDraft;
     source?: string;
+    // The draft comes from an AI import: the screen becomes « Relecture »,
+    // with a note asking to check it.
+    fromAi?: boolean;
     photo?: { uri: string; name: string; type: string };
     // A carousel's images to choose from, with `photo` preselected to the
-    // first — the picker opens from "Changer Photo".
+    // first — shown as thumbnails under the photo.
     photoCandidates?: ScrapedPhotoCandidate[];
   };
   // Set when the user starts an import from an empty collection's "Ajouter
   // une recette" menu — forces this collection onto the imported recipe.
   Import: { presetTag?: string } | undefined;
-  // Photo import (Phase 3) — same presetTag as Import.
-  PhotoImport: { presetTag?: string } | undefined;
+  // Photo import (Phase 3) — same presetTag as Import. `source` is set when
+  // coming from a failed Instagram import: the photos are then screenshots
+  // of the post's caption, and the link is kept as the recipe's source.
+  PhotoImport: { presetTag?: string; source?: string } | undefined;
   Profile: undefined;
 };
 
@@ -41,7 +46,7 @@ function Navigator() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.cream }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white }}>
         <ActivityIndicator />
       </View>
     );
@@ -51,11 +56,11 @@ function Navigator() {
     <NavigationContainer>
       <Stack.Navigator
         screenOptions={{
-          headerStyle: { backgroundColor: colors.cream },
+          headerStyle: { backgroundColor: colors.white },
           headerShadowVisible: false,
-          headerTitleStyle: { color: colors.charcoal, fontFamily: fonts.serifBold, fontSize: 20 },
+          headerTitleStyle: { color: colors.ink, fontFamily: fonts.serifBold, fontSize: 20 },
           headerTintColor: colors.terracotta,
-          contentStyle: { backgroundColor: colors.cream },
+          contentStyle: { backgroundColor: colors.white },
         }}
       >
         {token ? (
@@ -64,25 +69,24 @@ function Navigator() {
             <Stack.Screen
               name="RecipeDetail"
               component={RecipeDetailScreen}
-              options={{ title: '', headerBackButtonDisplayMode: 'minimal' }}
+              // Custom header: round buttons over the full-width photo or cover.
+              options={{ headerShown: false }}
             />
             <Stack.Screen
               name="RecipeEdit"
               component={RecipeEditScreen}
-              options={({ route }) => ({
-                title: route.params?.recipeId ? 'Modifier la recette' : 'Nouvelle recette',
-                headerBackButtonDisplayMode: 'minimal',
-              })}
+              // Custom top bar (close + centered title), like the import screens.
+              options={{ headerShown: false }}
             />
             <Stack.Screen
               name="Import"
               component={ImportScreen}
-              options={{ title: 'Importer depuis Instagram', headerBackButtonDisplayMode: 'minimal' }}
+              options={{ headerShown: false }}
             />
             <Stack.Screen
               name="PhotoImport"
               component={PhotoImportScreen}
-              options={{ title: 'Importer depuis des photos', headerBackButtonDisplayMode: 'minimal' }}
+              options={{ headerShown: false }}
             />
             <Stack.Screen
               name="Profile"

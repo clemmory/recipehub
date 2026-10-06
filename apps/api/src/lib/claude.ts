@@ -22,7 +22,11 @@ const RECORD_RECIPE_TOOL: Anthropic.Tool = {
     additionalProperties: false,
     required: ['title', 'ingredients', 'steps', 'prepTimeMin', 'cookTimeMin', 'servings', 'tags'],
     properties: {
-      title: { type: 'string' },
+      title: {
+        type: 'string',
+        description:
+          'Short dish name, 40 characters max, e.g. "Tarte abricots & amande" — not the post\'s catchy headline ("La meilleure tarte aux abricots de l\'été, ultra fondante..."). It must fit on two lines of a small recipe card.',
+      },
       ingredients: {
         type: 'array',
         items: {

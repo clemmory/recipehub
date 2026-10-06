@@ -1,24 +1,22 @@
 import { useEffect, useState } from 'react';
 
-// Progress messages shown while waiting on an import (2026-09-29): a bare
-// spinner felt stuck. Imports are single server calls, so the app can't know
-// the real phase — each message's `at` (ms since the start) follows measured
-// timings instead. Shared by ImportScreen and PhotoImportScreen.
+// Steps shown on the import waiting screen (ImportProgress). Imports are
+// single server calls, so the app can't know the real phase — each step's
+// `at` (ms since the start) follows measured timings instead (2026-09-29).
 export type ProgressStep = { at: number; text: string };
 
-// Returns the message for the time elapsed since `active` became true, or
-// null when inactive. Restarts from the first step on every new run.
-export function useProgressMessage(active: boolean, steps: ProgressStep[]): string | null {
-  const [index, setIndex] = useState(0);
+// Milliseconds since `active` became true (ticks a few times a second), 0
+// when inactive. Restarts on every new run.
+export function useElapsed(active: boolean, tickMs = 200): number {
+  const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
-    // Reset when the wait ends (not when the next one starts), so a new run
-    // never flashes the previous run's last message for one render.
     if (!active) {
-      setIndex(0);
+      setElapsed(0);
       return;
     }
-    const timers = steps.slice(1).map((step, i) => setTimeout(() => setIndex(i + 1), step.at));
-    return () => timers.forEach(clearTimeout);
-  }, [active, steps]);
-  return active ? steps[index].text : null;
+    const start = Date.now();
+    const timer = setInterval(() => setElapsed(Date.now() - start), tickMs);
+    return () => clearInterval(timer);
+  }, [active, tickMs]);
+  return elapsed;
 }

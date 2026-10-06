@@ -12,7 +12,7 @@ export default function Wordmark({
 }) {
   return (
     <View style={[styles.wrap, align === 'left' && styles.wrapLeft]}>
-      <Text style={[styles.word, { fontSize: size }]}>
+      <Text style={[styles.word, { fontSize: size, letterSpacing: -0.03 * size }]}>
         Tambo
         <Text style={styles.dot}>.</Text>
       </Text>
@@ -26,13 +26,13 @@ export default function Wordmark({
 const styles = StyleSheet.create({
   wrap: { alignItems: 'center' },
   wrapLeft: { alignItems: 'flex-start' },
-  word: { fontFamily: fonts.serifBold, color: colors.charcoal, letterSpacing: -0.3 },
+  word: { fontFamily: fonts.serifBold, color: colors.ink },
   dot: { color: colors.terracotta },
   tagline: {
-    fontFamily: fonts.sansMedium,
-    fontSize: 11.5,
-    color: colors.gray,
-    marginTop: 2,
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    color: colors.text2,
+    marginTop: 4,
     textAlign: 'center',
   },
   taglineLeft: { textAlign: 'left' },

@@ -9,7 +9,7 @@ import { importRoutes } from './routes/imports';
 
 export function buildApp() {
   const app = Fastify({ logger: true });
-  app.register(cors, { origin: true, methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE'] });
+  app.register(cors, { origin: true, methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'] });
   app.register(multipart, {
     attachFieldsToBody: true,
     limits: { fileSize: 10 * 1024 * 1024 },

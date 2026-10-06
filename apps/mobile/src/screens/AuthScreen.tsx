@@ -75,20 +75,20 @@ export default function AuthScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, alignItems: 'stretch', justifyContent: 'center', padding: 24, gap: 12, backgroundColor: colors.cream },
+  container: { flex: 1, alignItems: 'stretch', justifyContent: 'center', padding: 24, gap: 12, backgroundColor: colors.white },
   wordmarkWrap: { alignItems: 'center', marginBottom: 16 },
   input: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.hairline,
     borderRadius: radii.md,
     padding: 12,
     fontFamily: fonts.sansMedium,
     fontSize: 16,
     backgroundColor: colors.white,
-    color: colors.charcoal,
+    color: colors.ink,
   },
   button: { backgroundColor: colors.terracotta, borderRadius: radii.md, padding: 14, alignItems: 'center', marginTop: 8 },
   buttonText: { fontFamily: fonts.sansSemiBold, color: colors.white, fontSize: 16 },
-  switchText: { fontFamily: fonts.sansSemiBold, color: colors.greenDark, textAlign: 'center', marginTop: 12 },
+  switchText: { fontFamily: fonts.sansSemiBold, color: colors.ink, textAlign: 'center', marginTop: 12 },
   error: { fontFamily: fonts.sansMedium, color: colors.danger, textAlign: 'center' },
 });
